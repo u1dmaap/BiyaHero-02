@@ -1,22 +1,37 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: biyaHERO Transportation Booking API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Authentication operations
+  - name: vehicles
+    description: Vehicle operations
+  - name: routes
+    description: Route operations
+  - name: schedules
+    description: Schedule operations
+  - name: bookings
+    description: Booking operations
+  - name: fares
+    description: Fare comparison operations
+  - name: map
+    description: Map data operations
+  - name: stats
+    description: Statistics and summaries
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,7 +39,492 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /auth/register:
+    post:
+      operationId: register
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterBody"
+      responses:
+        "201":
+          description: Registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Email already in use
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Log in with email and password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Get the current logged-in user
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /vehicles:
+    get:
+      operationId: listVehicles
+      tags: [vehicles]
+      summary: List all registered vehicles
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/VehicleType"
+          description: Filter by vehicle type
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, inactive, en_route]
+          description: Filter by vehicle status
+      responses:
+        "200":
+          description: List of vehicles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Vehicle"
+
+  /vehicles/{id}:
+    get:
+      operationId: getVehicle
+      tags: [vehicles]
+      summary: Get a single vehicle by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Vehicle details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vehicle"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /routes:
+    get:
+      operationId: listRoutes
+      tags: [routes]
+      summary: List all routes
+      parameters:
+        - name: origin
+          in: query
+          schema:
+            type: string
+          description: Filter by origin city/area
+        - name: destination
+          in: query
+          schema:
+            type: string
+          description: Filter by destination city/area
+      responses:
+        "200":
+          description: List of routes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Route"
+
+  /routes/{id}:
+    get:
+      operationId: getRoute
+      tags: [routes]
+      summary: Get a single route by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Route details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Route"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /schedules:
+    get:
+      operationId: listSchedules
+      tags: [schedules]
+      summary: Search available schedules/trips
+      parameters:
+        - name: origin
+          in: query
+          schema:
+            type: string
+          description: Origin city/area
+        - name: destination
+          in: query
+          schema:
+            type: string
+          description: Destination city/area
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Travel date (YYYY-MM-DD)
+        - name: vehicleType
+          in: query
+          schema:
+            $ref: "#/components/schemas/VehicleType"
+          description: Filter by vehicle type
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [fare, departureTime, duration]
+          description: Sort results
+      responses:
+        "200":
+          description: List of available schedules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Schedule"
+
+  /schedules/{id}:
+    get:
+      operationId: getSchedule
+      tags: [schedules]
+      summary: Get a single schedule by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Schedule details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Schedule"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /fares/compare:
+    get:
+      operationId: compareFares
+      tags: [fares]
+      summary: Compare fares across transport modes for a route
+      parameters:
+        - name: origin
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: destination
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Fare comparison results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FareComparison"
+
+  /map/vehicles:
+    get:
+      operationId: getMapVehicles
+      tags: [map]
+      summary: Get all vehicles with current location for map display
+      parameters:
+        - name: type
+          in: query
+          schema:
+            $ref: "#/components/schemas/VehicleType"
+          description: Filter by vehicle type
+      responses:
+        "200":
+          description: Vehicles with location data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MapVehicle"
+
+  /bookings:
+    get:
+      operationId: listBookings
+      tags: [bookings]
+      summary: List the current user's bookings
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/BookingStatus"
+      responses:
+        "200":
+          description: List of bookings
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Booking"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createBooking
+      tags: [bookings]
+      summary: Create a new booking
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBookingBody"
+      responses:
+        "201":
+          description: Booking created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "400":
+          description: Validation error or insufficient seats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /bookings/{id}:
+    get:
+      operationId: getBooking
+      tags: [bookings]
+      summary: Get a single booking by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Booking details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: cancelBooking
+      tags: [bookings]
+      summary: Cancel a booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Booking cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Booking"
+        "400":
+          description: Cannot cancel this booking
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /bookings/{id}/pay:
+    post:
+      operationId: payBooking
+      tags: [bookings]
+      summary: Process payment for a booking
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayBookingBody"
+      responses:
+        "200":
+          description: Payment processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaymentResult"
+        "400":
+          description: Payment failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stats/summary:
+    get:
+      operationId: getStatsSummary
+      tags: [stats]
+      summary: Get platform statistics summary
+      responses:
+        "200":
+          description: Platform stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsSummary"
+
+  /stats/popular-routes:
+    get:
+      operationId: getPopularRoutes
+      tags: [stats]
+      summary: Get the most popular routes by booking count
+      responses:
+        "200":
+          description: Popular routes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PopularRoute"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +534,424 @@ components:
       required:
         - status
 
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+      required:
+        - error
+
+    VehicleType:
+      type: string
+      enum: [jeepney, tricycle, bus, van, fx, uv_express, ferry]
+
+    BookingStatus:
+      type: string
+      enum: [pending, confirmed, completed, cancelled]
+
+    PaymentMethod:
+      type: string
+      enum: [cash, gcash, maya, credit_card, debit_card]
+
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - email
+        - createdAt
+
+    RegisterBody:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 6
+      required:
+        - name
+        - email
+        - password
+
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+      required:
+        - email
+        - password
+
+    AuthResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: "#/components/schemas/User"
+      required:
+        - token
+        - user
+
+    Vehicle:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          $ref: "#/components/schemas/VehicleType"
+        plateNumber:
+          type: string
+        operator:
+          type: string
+        capacity:
+          type: integer
+        status:
+          type: string
+          enum: [active, inactive, en_route]
+        currentLat:
+          type: number
+          format: double
+        currentLng:
+          type: number
+          format: double
+        routeId:
+          type: integer
+          nullable: true
+        routeName:
+          type: string
+          nullable: true
+      required:
+        - id
+        - type
+        - plateNumber
+        - operator
+        - capacity
+        - status
+        - currentLat
+        - currentLng
+
+    MapVehicle:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          $ref: "#/components/schemas/VehicleType"
+        plateNumber:
+          type: string
+        operator:
+          type: string
+        status:
+          type: string
+          enum: [active, inactive, en_route]
+        currentLat:
+          type: number
+          format: double
+        currentLng:
+          type: number
+          format: double
+        routeName:
+          type: string
+          nullable: true
+        availableSeats:
+          type: integer
+          nullable: true
+      required:
+        - id
+        - type
+        - plateNumber
+        - operator
+        - status
+        - currentLat
+        - currentLng
+
+    Route:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        origin:
+          type: string
+        destination:
+          type: string
+        distanceKm:
+          type: number
+          format: double
+        estimatedMinutes:
+          type: integer
+        vehicleTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/VehicleType"
+      required:
+        - id
+        - name
+        - origin
+        - destination
+        - distanceKm
+        - estimatedMinutes
+        - vehicleTypes
+
+    Schedule:
+      type: object
+      properties:
+        id:
+          type: integer
+        routeId:
+          type: integer
+        routeName:
+          type: string
+        origin:
+          type: string
+        destination:
+          type: string
+        vehicleId:
+          type: integer
+        vehicleType:
+          $ref: "#/components/schemas/VehicleType"
+        operator:
+          type: string
+        plateNumber:
+          type: string
+        departureTime:
+          type: string
+          format: date-time
+        estimatedArrivalTime:
+          type: string
+          format: date-time
+        availableSeats:
+          type: integer
+        totalCapacity:
+          type: integer
+        fare:
+          type: number
+          format: double
+        date:
+          type: string
+          format: date
+      required:
+        - id
+        - routeId
+        - routeName
+        - origin
+        - destination
+        - vehicleId
+        - vehicleType
+        - operator
+        - plateNumber
+        - departureTime
+        - estimatedArrivalTime
+        - availableSeats
+        - totalCapacity
+        - fare
+        - date
+
+    FareComparison:
+      type: object
+      properties:
+        vehicleType:
+          $ref: "#/components/schemas/VehicleType"
+        origin:
+          type: string
+        destination:
+          type: string
+        minFare:
+          type: number
+          format: double
+        maxFare:
+          type: number
+          format: double
+        estimatedMinutes:
+          type: integer
+        availableSchedules:
+          type: integer
+        comfortLevel:
+          type: string
+          enum: [basic, standard, comfortable, premium]
+        isCheapest:
+          type: boolean
+        isFastest:
+          type: boolean
+      required:
+        - vehicleType
+        - origin
+        - destination
+        - minFare
+        - maxFare
+        - estimatedMinutes
+        - availableSchedules
+        - comfortLevel
+        - isCheapest
+        - isFastest
+
+    CreateBookingBody:
+      type: object
+      properties:
+        scheduleId:
+          type: integer
+        seatCount:
+          type: integer
+          minimum: 1
+        passengerName:
+          type: string
+        passengerPhone:
+          type: string
+      required:
+        - scheduleId
+        - seatCount
+        - passengerName
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: integer
+        scheduleId:
+          type: integer
+        schedule:
+          $ref: "#/components/schemas/Schedule"
+        seatCount:
+          type: integer
+        passengerName:
+          type: string
+        passengerPhone:
+          type: string
+          nullable: true
+        totalFare:
+          type: number
+          format: double
+        status:
+          $ref: "#/components/schemas/BookingStatus"
+        paymentMethod:
+          $ref: "#/components/schemas/PaymentMethod"
+          nullable: true
+        paymentStatus:
+          type: string
+          enum: [unpaid, paid, refunded]
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - userId
+        - scheduleId
+        - seatCount
+        - passengerName
+        - totalFare
+        - status
+        - createdAt
+
+    PayBookingBody:
+      type: object
+      properties:
+        method:
+          $ref: "#/components/schemas/PaymentMethod"
+        cardNumber:
+          type: string
+          nullable: true
+        cardHolder:
+          type: string
+          nullable: true
+        expiryDate:
+          type: string
+          nullable: true
+        cvv:
+          type: string
+          nullable: true
+        mobileNumber:
+          type: string
+          nullable: true
+      required:
+        - method
+
+    PaymentResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+        transactionId:
+          type: string
+        booking:
+          $ref: "#/components/schemas/Booking"
+        message:
+          type: string
+      required:
+        - success
+        - transactionId
+        - booking
+
+    StatsSummary:
+      type: object
+      properties:
+        totalVehicles:
+          type: integer
+        activeVehicles:
+          type: integer
+        totalRoutes:
+          type: integer
+        totalSchedulesToday:
+          type: integer
+        totalBookings:
+          type: integer
+        vehicleTypeCounts:
+          type: object
+          additionalProperties:
+            type: integer
+      required:
+        - totalVehicles
+        - activeVehicles
+        - totalRoutes
+        - totalSchedulesToday
+        - totalBookings
+        - vehicleTypeCounts
+
+    PopularRoute:
+      type: object
+      properties:
+        routeId:
+          type: integer
+        routeName:
+          type: string
+        origin:
+          type: string
+        destination:
+          type: string
+        bookingCount:
+          type: integer
+        availableVehicleTypes:
+          type: array
+          items:
+            $ref: "#/components/schemas/VehicleType"
+      required:
+        - routeId
+        - routeName
+        - origin
+        - destination
+        - bookingCount
+        - availableVehicleTypes
