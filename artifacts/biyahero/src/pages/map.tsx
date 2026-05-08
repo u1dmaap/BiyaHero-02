@@ -12,7 +12,10 @@ import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
 
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+// Leaflet bundles webpack-specific asset paths in _getIconUrl; delete it so mergeOptions takes effect.
+// Cast through the augmented interface rather than `any` to preserve type safety.
+type LeafletIconDefaultInternal = typeof L.Icon.Default.prototype & { _getIconUrl?: () => string };
+delete (L.Icon.Default.prototype as LeafletIconDefaultInternal)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl: markerIcon,
   iconRetinaUrl: markerIcon2x,

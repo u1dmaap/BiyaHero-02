@@ -25,8 +25,17 @@ const SPEED_MULTIPLIERS: Record<string, number> = {
   ferry: 0.9,
 };
 
+function preprocessFaresQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  if (typeof out.date === "string" && out.date) {
+    const d = new Date(out.date);
+    if (!isNaN(d.getTime())) out.date = d;
+  }
+  return out;
+}
+
 router.get("/fares/compare", async (req, res): Promise<void> => {
-  const parsed = CompareFaresQueryParams.safeParse(req.query);
+  const parsed = CompareFaresQueryParams.safeParse(preprocessFaresQuery(req.query));
   if (!parsed.success) {
     res.status(400).json({ error: "Bad request", message: parsed.error.message });
     return;

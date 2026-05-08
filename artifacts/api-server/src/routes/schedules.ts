@@ -36,8 +36,17 @@ async function buildScheduleJoin(whereConditions: ReturnType<typeof and>[] = [])
   return results;
 }
 
+function preprocessQuery(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  if (typeof out.date === "string" && out.date) {
+    const d = new Date(out.date);
+    if (!isNaN(d.getTime())) out.date = d;
+  }
+  return out;
+}
+
 router.get("/schedules", async (req, res): Promise<void> => {
-  const parsed = ListSchedulesQueryParams.safeParse(req.query);
+  const parsed = ListSchedulesQueryParams.safeParse(preprocessQuery(req.query));
   if (!parsed.success) {
     res.status(400).json({ error: "Bad request", message: parsed.error.message });
     return;

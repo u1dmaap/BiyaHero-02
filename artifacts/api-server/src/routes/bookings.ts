@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, sql } from "drizzle-orm";
 import { db, bookingsTable, schedulesTable, vehiclesTable, routesTable } from "@workspace/db";
 import {
   ListBookingsQueryParams,
@@ -87,39 +87,67 @@ router.post("/bookings", requireAuth, async (req: AuthRequest, res): Promise<voi
 
   const { scheduleId, seatCount, passengerName, passengerPhone } = parsed.data;
 
-  const schedule = await getScheduleWithDetails(scheduleId);
-  if (!schedule) {
+  const precheck = await getScheduleWithDetails(scheduleId);
+  if (!precheck) {
     res.status(404).json({ error: "Not found", message: "Schedule not found" });
     return;
   }
 
-  if (schedule.availableSeats < seatCount) {
-    res.status(400).json({ error: "Bad request", message: "Not enough seats available" });
+  let bookingId: number;
+  let farePerSeat: number;
+
+  try {
+    const result = await db.transaction(async (tx) => {
+      const [schedule] = await tx
+        .select({
+          id: schedulesTable.id,
+          availableSeats: schedulesTable.availableSeats,
+          fare: schedulesTable.fare,
+        })
+        .from(schedulesTable)
+        .where(and(eq(schedulesTable.id, scheduleId), gte(schedulesTable.availableSeats, seatCount)));
+
+      if (!schedule) {
+        throw Object.assign(new Error("Not enough seats available"), { status: 400 });
+      }
+
+      const totalFare = schedule.fare * seatCount;
+
+      const [booking] = await tx
+        .insert(bookingsTable)
+        .values({
+          userId: req.userId!,
+          scheduleId,
+          seatCount,
+          passengerName,
+          passengerPhone: passengerPhone ?? null,
+          totalFare,
+          status: "confirmed",
+          paymentStatus: "unpaid",
+        })
+        .returning();
+
+      await tx
+        .update(schedulesTable)
+        .set({ availableSeats: sql`${schedulesTable.availableSeats} - ${seatCount}` })
+        .where(and(eq(schedulesTable.id, scheduleId), gte(schedulesTable.availableSeats, seatCount)));
+
+      return { bookingId: booking.id, farePerSeat: schedule.fare };
+    });
+
+    bookingId = result.bookingId;
+    farePerSeat = result.farePerSeat;
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 400) {
+      res.status(400).json({ error: "Bad request", message: e.message });
+    } else {
+      res.status(500).json({ error: "Internal server error", message: "Booking failed" });
+    }
     return;
   }
 
-  const totalFare = schedule.fare * seatCount;
-
-  const [booking] = await db
-    .insert(bookingsTable)
-    .values({
-      userId: req.userId!,
-      scheduleId,
-      seatCount,
-      passengerName,
-      passengerPhone: passengerPhone ?? null,
-      totalFare,
-      status: "confirmed",
-      paymentStatus: "unpaid",
-    })
-    .returning();
-
-  await db
-    .update(schedulesTable)
-    .set({ availableSeats: schedule.availableSeats - seatCount })
-    .where(eq(schedulesTable.id, scheduleId));
-
-  const enriched = await getBookingWithSchedule(booking.id);
+  const enriched = await getBookingWithSchedule(bookingId);
   res.status(201).json(GetBookingResponse.parse(enriched));
 });
 
