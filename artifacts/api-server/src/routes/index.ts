@@ -8,6 +8,7 @@ import faresRouter from "./fares";
 import mapRouter from "./map";
 import bookingsRouter from "./bookings";
 import statsRouter from "./stats";
+import driverRouter from "./driver";
 
 const router: IRouter = Router();
 
@@ -20,5 +21,6 @@ router.use(faresRouter);
 router.use(mapRouter);
 router.use(bookingsRouter);
 router.use(statsRouter);
+router.use(driverRouter);
 
 export default router;

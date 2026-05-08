@@ -45,10 +45,14 @@ export const PaymentMethod = {
   debit_card: "debit_card",
 } as const;
 
+export type UserRole = "commuter" | "driver";
+
 export interface User {
   id: number;
   name: string;
   email: string;
+  role: UserRole;
+  driverVehicleId?: number | null;
   createdAt: string;
 }
 
@@ -57,6 +61,11 @@ export interface RegisterBody {
   email: string;
   /** @minLength 6 */
   password: string;
+  role?: "commuter" | "driver";
+  vehicleType?: VehicleType;
+  vehiclePlate?: string;
+  vehicleCapacity?: number;
+  vehicleOperator?: string;
 }
 
 export interface LoginBody {
@@ -109,6 +118,8 @@ export interface MapVehicle {
   currentLng: number;
   routeName?: string | null;
   availableSeats?: number | null;
+  currentPassengers?: number | null;
+  driverStatus?: string | null;
 }
 
 export interface Route {

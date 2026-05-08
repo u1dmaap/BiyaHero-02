@@ -12,6 +12,8 @@ export const vehiclesTable = pgTable("vehicles", {
   currentLat: doublePrecision("current_lat").notNull().default(14.5995),
   currentLng: doublePrecision("current_lng").notNull().default(120.9842),
   routeId: integer("route_id"),
+  currentPassengers: integer("current_passengers").notNull().default(0),
+  driverStatus: text("driver_status").notNull().default("offline"), // offline, available, en_route, arrived
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

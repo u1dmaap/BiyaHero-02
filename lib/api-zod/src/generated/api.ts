@@ -23,6 +23,11 @@ export const RegisterBody = zod.object({
   name: zod.string(),
   email: zod.string().email(),
   password: zod.string().min(registerBodyPasswordMin),
+  role: zod.enum(["commuter", "driver"]).optional().default("commuter"),
+  vehicleType: zod.enum(["jeepney", "tricycle", "bus", "van", "fx", "uv_express", "ferry"]).optional(),
+  vehiclePlate: zod.string().optional(),
+  vehicleCapacity: zod.coerce.number().optional(),
+  vehicleOperator: zod.string().optional(),
 });
 
 /**
@@ -39,6 +44,8 @@ export const LoginResponse = zod.object({
     id: zod.number(),
     name: zod.string(),
     email: zod.string(),
+    role: zod.enum(["commuter", "driver"]).default("commuter"),
+    driverVehicleId: zod.number().nullish(),
     createdAt: zod.coerce.date(),
   }),
 });
@@ -50,6 +57,8 @@ export const GetMeResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   email: zod.string(),
+  role: zod.enum(["commuter", "driver"]).default("commuter"),
+  driverVehicleId: zod.number().nullish(),
   createdAt: zod.coerce.date(),
 });
 
@@ -318,6 +327,8 @@ export const GetMapVehiclesResponseItem = zod.object({
   currentLng: zod.number(),
   routeName: zod.string().nullish(),
   availableSeats: zod.number().nullish(),
+  currentPassengers: zod.number().nullish(),
+  driverStatus: zod.string().nullish(),
 });
 export const GetMapVehiclesResponse = zod.array(GetMapVehiclesResponseItem);
 

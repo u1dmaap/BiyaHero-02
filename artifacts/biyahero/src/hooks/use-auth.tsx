@@ -8,6 +8,7 @@ interface AuthContextType {
   isLoading: boolean;
   logout: () => void;
   isAuthenticated: boolean;
+  isDriver: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -15,6 +16,7 @@ const AuthContext = createContext<AuthContextType>({
   isLoading: true,
   logout: () => {},
   isAuthenticated: false,
+  isDriver: false,
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -42,12 +44,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.location.reload();
   };
 
+  const isDriver = user?.role === "driver";
+
   return (
     <AuthContext.Provider value={{
       user: user ?? null,
       isLoading,
       logout,
       isAuthenticated: !!user,
+      isDriver,
     }}>
       {children}
     </AuthContext.Provider>
@@ -67,7 +72,39 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [isLoading, isAuthenticated, setLocation]);
 
   if (isLoading || !isAuthenticated) {
-    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
+export function DriverGuard({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading, isDriver } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (!isAuthenticated) setLocation("/login");
+      else if (!isDriver) setLocation("/");
+    }
+  }, [isLoading, isAuthenticated, isDriver, setLocation]);
+
+  if (isLoading || !isAuthenticated || !isDriver) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
   }
 
   return <>{children}</>;

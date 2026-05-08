@@ -1,10 +1,10 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
-import { AuthProvider, AuthGuard } from "@/hooks/use-auth";
+import { AuthProvider, AuthGuard, DriverGuard } from "@/hooks/use-auth";
 import { Layout } from "@/components/layout";
 import { initAuth } from "@/lib/auth";
 
@@ -16,6 +16,7 @@ import SearchPage from "@/pages/search";
 import ComparePage from "@/pages/compare";
 import BookPage from "@/pages/book";
 import TripsPage from "@/pages/trips";
+import DriverDashboard from "@/pages/driver";
 
 initAuth();
 
@@ -32,13 +33,21 @@ function Router() {
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={Home} />
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
-        <Route path="/map" component={MapPage} />
-        <Route path="/search" component={SearchPage} />
-        <Route path="/compare" component={ComparePage} />
-        
+
+        <Route path="/">
+          {() => <AuthGuard><Home /></AuthGuard>}
+        </Route>
+        <Route path="/map">
+          {() => <AuthGuard><MapPage /></AuthGuard>}
+        </Route>
+        <Route path="/search">
+          {() => <AuthGuard><SearchPage /></AuthGuard>}
+        </Route>
+        <Route path="/compare">
+          {() => <AuthGuard><ComparePage /></AuthGuard>}
+        </Route>
         <Route path="/book/:scheduleId">
           {(params) => (
             <AuthGuard>
@@ -46,13 +55,11 @@ function Router() {
             </AuthGuard>
           )}
         </Route>
-        
         <Route path="/trips">
-          {() => (
-            <AuthGuard>
-              <TripsPage />
-            </AuthGuard>
-          )}
+          {() => <AuthGuard><TripsPage /></AuthGuard>}
+        </Route>
+        <Route path="/driver">
+          {() => <DriverGuard><DriverDashboard /></DriverGuard>}
         </Route>
 
         <Route component={NotFound} />

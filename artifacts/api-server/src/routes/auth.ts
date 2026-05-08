@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, usersTable } from "@workspace/db";
+import { db, usersTable, vehiclesTable } from "@workspace/db";
 import { RegisterBody, LoginBody, GetMeResponse, LoginResponse } from "@workspace/api-zod";
 import { hashPassword, verifyPassword, signToken, requireAuth, type AuthRequest } from "../lib/auth";
 
@@ -13,7 +13,15 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
-  const { name, email, password } = parsed.data;
+  const { name, email, password, role, vehicleType, vehiclePlate, vehicleCapacity, vehicleOperator } = parsed.data;
+  const userRole = role ?? "commuter";
+
+  if (userRole === "driver") {
+    if (!vehicleType || !vehiclePlate || !vehicleCapacity || !vehicleOperator) {
+      res.status(400).json({ error: "Validation error", message: "Driver registration requires vehicleType, vehiclePlate, vehicleCapacity, and vehicleOperator" });
+      return;
+    }
+  }
 
   const [existing] = await db.select().from(usersTable).where(eq(usersTable.email, email));
   if (existing) {
@@ -21,8 +29,38 @@ router.post("/auth/register", async (req, res): Promise<void> => {
     return;
   }
 
+  if (userRole === "driver" && vehiclePlate) {
+    const [existingVehicle] = await db.select().from(vehiclesTable).where(eq(vehiclesTable.plateNumber, vehiclePlate));
+    if (existingVehicle) {
+      res.status(409).json({ error: "Conflict", message: "A vehicle with that plate number is already registered" });
+      return;
+    }
+  }
+
   const passwordHash = hashPassword(password);
-  const [user] = await db.insert(usersTable).values({ name, email, passwordHash }).returning();
+
+  let driverVehicleId: number | undefined;
+
+  if (userRole === "driver" && vehicleType && vehiclePlate && vehicleCapacity && vehicleOperator) {
+    const [vehicle] = await db
+      .insert(vehiclesTable)
+      .values({
+        type: vehicleType,
+        plateNumber: vehiclePlate,
+        operator: vehicleOperator,
+        capacity: vehicleCapacity,
+        status: "inactive",
+        driverStatus: "offline",
+        currentPassengers: 0,
+      })
+      .returning();
+    driverVehicleId = vehicle.id;
+  }
+
+  const [user] = await db
+    .insert(usersTable)
+    .values({ name, email, passwordHash, role: userRole, driverVehicleId: driverVehicleId ?? null })
+    .returning();
 
   const token = signToken(user.id);
 
@@ -33,6 +71,8 @@ router.post("/auth/register", async (req, res): Promise<void> => {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
+        driverVehicleId: user.driverVehicleId ?? null,
         createdAt: user.createdAt,
       },
     }),
@@ -63,6 +103,8 @@ router.post("/auth/login", async (req, res): Promise<void> => {
         id: user.id,
         name: user.name,
         email: user.email,
+        role: user.role,
+        driverVehicleId: user.driverVehicleId ?? null,
         createdAt: user.createdAt,
       },
     }),
@@ -75,7 +117,16 @@ router.get("/auth/me", requireAuth, async (req: AuthRequest, res): Promise<void>
     res.status(404).json({ error: "Not found", message: "User not found" });
     return;
   }
-  res.json(GetMeResponse.parse({ id: user.id, name: user.name, email: user.email, createdAt: user.createdAt }));
+  res.json(
+    GetMeResponse.parse({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      driverVehicleId: user.driverVehicleId ?? null,
+      createdAt: user.createdAt,
+    }),
+  );
 });
 
 export default router;

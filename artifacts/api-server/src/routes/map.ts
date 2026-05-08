@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, vehiclesTable, routesTable, schedulesTable } from "@workspace/db";
+import { db, vehiclesTable, routesTable } from "@workspace/db";
 import { GetMapVehiclesQueryParams, GetMapVehiclesResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -24,6 +24,8 @@ router.get("/map/vehicles", async (req, res): Promise<void> => {
       currentLat: vehiclesTable.currentLat,
       currentLng: vehiclesTable.currentLng,
       routeName: routesTable.name,
+      currentPassengers: vehiclesTable.currentPassengers,
+      driverStatus: vehiclesTable.driverStatus,
     })
     .from(vehiclesTable)
     .leftJoin(routesTable, eq(vehiclesTable.routeId, routesTable.id))

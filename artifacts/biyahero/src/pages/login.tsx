@@ -15,7 +15,7 @@ export default function Login() {
   const [, setLocation] = useLocation();
   const { isAuthenticated } = useAuth();
   const { toast } = useToast();
-  
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -24,17 +24,21 @@ export default function Login() {
       onSuccess: (data) => {
         setAuthToken(data.token);
         toast({ title: "Welcome back!", description: "You have successfully logged in." });
-        setLocation("/");
+        if (data.user.role === "driver") {
+          setLocation("/driver");
+        } else {
+          setLocation("/");
+        }
         window.location.reload();
       },
       onError: (error) => {
-        toast({ 
-          title: "Login Failed", 
-          description: error.message || "Invalid email or password.", 
-          variant: "destructive" 
+        toast({
+          title: "Login Failed",
+          description: error.message || "Invalid email or password.",
+          variant: "destructive",
         });
-      }
-    }
+      },
+    },
   });
 
   if (isAuthenticated) {
@@ -63,9 +67,9 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
-              <Input 
-                id="email" 
-                type="email" 
+              <Input
+                id="email"
+                type="email"
                 placeholder="juan@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -76,19 +80,15 @@ export default function Login() {
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
               </div>
-              <Input 
-                id="password" 
-                type="password" 
+              <Input
+                id="password"
+                type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
             </div>
-            <Button 
-              type="submit" 
-              className="w-full mt-6" 
-              disabled={loginMutation.isPending}
-            >
+            <Button type="submit" className="w-full mt-6" disabled={loginMutation.isPending}>
               {loginMutation.isPending ? "Logging in..." : "Log in"}
             </Button>
           </form>
