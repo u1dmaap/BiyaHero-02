@@ -242,7 +242,7 @@ export default function BookPage({ scheduleId }: { scheduleId: string }) {
                   </form>
                 </CardContent>
                 <CardFooter className="flex justify-between border-t p-6">
-                  <Button variant="ghost" disabled={payBookingMutation.isPending}>Back</Button>
+                  <Button variant="ghost" disabled={payBookingMutation.isPending} onClick={() => setStep(2)}>Back</Button>
                   <Button type="submit" form="payment-form" size="lg" disabled={payBookingMutation.isPending}>
                     {payBookingMutation.isPending ? "Processing Payment..." : `Pay ₱${totalFare.toLocaleString()}`}
                   </Button>

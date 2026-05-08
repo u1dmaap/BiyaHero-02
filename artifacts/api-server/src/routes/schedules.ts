@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ilike, asc } from "drizzle-orm";
 import { db, schedulesTable, vehiclesTable, routesTable } from "@workspace/db";
 import {
   ListSchedulesQueryParams,
@@ -7,34 +7,9 @@ import {
   ListSchedulesResponse,
   GetScheduleResponse,
 } from "@workspace/api-zod";
+import { SQL } from "drizzle-orm";
 
 const router: IRouter = Router();
-
-async function buildScheduleJoin(whereConditions: ReturnType<typeof and>[] = []) {
-  const results = await db
-    .select({
-      id: schedulesTable.id,
-      routeId: schedulesTable.routeId,
-      routeName: routesTable.name,
-      origin: routesTable.origin,
-      destination: routesTable.destination,
-      vehicleId: schedulesTable.vehicleId,
-      vehicleType: vehiclesTable.type,
-      operator: vehiclesTable.operator,
-      plateNumber: vehiclesTable.plateNumber,
-      departureTime: schedulesTable.departureTime,
-      estimatedArrivalTime: schedulesTable.estimatedArrivalTime,
-      availableSeats: schedulesTable.availableSeats,
-      totalCapacity: vehiclesTable.capacity,
-      fare: schedulesTable.fare,
-      date: schedulesTable.date,
-    })
-    .from(schedulesTable)
-    .innerJoin(routesTable, eq(schedulesTable.routeId, routesTable.id))
-    .innerJoin(vehiclesTable, eq(schedulesTable.vehicleId, vehiclesTable.id));
-
-  return results;
-}
 
 function preprocessQuery(query: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = { ...query };
@@ -45,6 +20,24 @@ function preprocessQuery(query: Record<string, unknown>): Record<string, unknown
   return out;
 }
 
+const SCHEDULE_COLUMNS = {
+  id: schedulesTable.id,
+  routeId: schedulesTable.routeId,
+  routeName: routesTable.name,
+  origin: routesTable.origin,
+  destination: routesTable.destination,
+  vehicleId: schedulesTable.vehicleId,
+  vehicleType: vehiclesTable.type,
+  operator: vehiclesTable.operator,
+  plateNumber: vehiclesTable.plateNumber,
+  departureTime: schedulesTable.departureTime,
+  estimatedArrivalTime: schedulesTable.estimatedArrivalTime,
+  availableSeats: schedulesTable.availableSeats,
+  totalCapacity: vehiclesTable.capacity,
+  fare: schedulesTable.fare,
+  date: schedulesTable.date,
+};
+
 router.get("/schedules", async (req, res): Promise<void> => {
   const parsed = ListSchedulesQueryParams.safeParse(preprocessQuery(req.query));
   if (!parsed.success) {
@@ -53,13 +46,23 @@ router.get("/schedules", async (req, res): Promise<void> => {
   }
 
   const { origin, destination, date, vehicleType, sortBy } = parsed.data;
+  const dateStr = date instanceof Date ? date.toISOString().split("T")[0] : date;
 
-  let results = await buildScheduleJoin();
+  const conditions: SQL[] = [];
+  if (origin) conditions.push(ilike(routesTable.origin, `%${origin}%`));
+  if (destination) conditions.push(ilike(routesTable.destination, `%${destination}%`));
+  if (dateStr) conditions.push(eq(schedulesTable.date, dateStr));
+  if (vehicleType) conditions.push(eq(vehiclesTable.type, vehicleType));
 
-  if (origin) results = results.filter((s) => s.origin.toLowerCase().includes(origin.toLowerCase()));
-  if (destination) results = results.filter((s) => s.destination.toLowerCase().includes(destination.toLowerCase()));
-  if (date) results = results.filter((s) => s.date === (date instanceof Date ? date.toISOString().split("T")[0] : date));
-  if (vehicleType) results = results.filter((s) => s.vehicleType === vehicleType);
+  const query = db
+    .select(SCHEDULE_COLUMNS)
+    .from(schedulesTable)
+    .innerJoin(routesTable, eq(schedulesTable.routeId, routesTable.id))
+    .innerJoin(vehiclesTable, eq(schedulesTable.vehicleId, vehiclesTable.id));
+
+  const results = await (conditions.length > 0
+    ? query.where(and(...conditions))
+    : query);
 
   if (sortBy === "fare") {
     results.sort((a, b) => a.fare - b.fare);
@@ -77,8 +80,12 @@ router.get("/schedules/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const results = await buildScheduleJoin();
-  const schedule = results.find((s) => s.id === params.data.id);
+  const [schedule] = await db
+    .select(SCHEDULE_COLUMNS)
+    .from(schedulesTable)
+    .innerJoin(routesTable, eq(schedulesTable.routeId, routesTable.id))
+    .innerJoin(vehiclesTable, eq(schedulesTable.vehicleId, vehiclesTable.id))
+    .where(eq(schedulesTable.id, params.data.id));
 
   if (!schedule) {
     res.status(404).json({ error: "Not found", message: "Schedule not found" });
