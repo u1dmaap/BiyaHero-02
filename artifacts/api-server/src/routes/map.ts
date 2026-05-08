@@ -5,6 +5,28 @@ import { GetMapVehiclesQueryParams, GetMapVehiclesResponse } from "@workspace/ap
 
 const router: IRouter = Router();
 
+router.get("/tiles/:z/:x/:y", async (req, res): Promise<void> => {
+  const { z, x, y } = req.params;
+  const subdomains = ["a", "b", "c", "d"];
+  const s = subdomains[(Number(x) + Number(y)) % subdomains.length];
+  const tileUrl = `https://${s}.basemaps.cartocdn.com/rastertiles/voyager/${z}/${x}/${y}.png`;
+  try {
+    const response = await fetch(tileUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 biyaHERO/1.0" },
+    });
+    if (!response.ok) {
+      res.status(response.status).end();
+      return;
+    }
+    const buffer = await response.arrayBuffer();
+    res.set("Content-Type", "image/png");
+    res.set("Cache-Control", "public, max-age=86400");
+    res.send(Buffer.from(buffer));
+  } catch {
+    res.status(500).end();
+  }
+});
+
 router.get("/map/vehicles", async (req, res): Promise<void> => {
   const parsed = GetMapVehiclesQueryParams.safeParse(req.query);
   if (!parsed.success) {

@@ -1,7 +1,6 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { useGetMapVehicles, VehicleType } from "@workspace/api-client-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Bus, Car, Ship, Users, SlidersHorizontal, X, LocateFixed, RefreshCw } from "lucide-react";
@@ -38,20 +37,9 @@ const vehicleIcons: Record<string, React.ElementType> = {
 function createVehicleIcon(color: string) {
   return new L.DivIcon({
     className: "",
-    html: `<div style="
-      position:relative;width:32px;height:40px;
-    ">
-      <div style="
-        width:32px;height:32px;border-radius:50% 50% 50% 0;
-        background:${color};transform:rotate(-45deg);
-        border:3px solid white;
-        box-shadow:0 4px 12px rgba(0,0,0,0.3);
-      "></div>
-      <div style="
-        position:absolute;top:6px;left:6px;
-        width:16px;height:16px;border-radius:50%;
-        background:rgba(255,255,255,0.9);
-      "></div>
+    html: `<div style="position:relative;width:32px;height:40px;">
+      <div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:${color};transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+      <div style="position:absolute;top:6px;left:6px;width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,0.9);"></div>
     </div>`,
     iconSize: [32, 40],
     iconAnchor: [16, 40],
@@ -62,11 +50,7 @@ function createVehicleIcon(color: string) {
 function createUserIcon() {
   return new L.DivIcon({
     className: "",
-    html: `<div style="
-      width:20px;height:20px;border-radius:50%;
-      background:#2563EB;border:3px solid white;
-      box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 4px 12px rgba(0,0,0,0.3);
-    "></div>`,
+    html: `<div style="width:20px;height:20px;border-radius:50%;background:#2563EB;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 4px 12px rgba(0,0,0,0.3);"></div>`,
     iconSize: [20, 20],
     iconAnchor: [10, 10],
     popupAnchor: [0, -14],
@@ -78,6 +62,16 @@ function FlyToLocation({ lat, lng }: { lat: number; lng: number }) {
   useEffect(() => {
     map.flyTo([lat, lng], 15, { animate: true, duration: 1.2 });
   }, [lat, lng, map]);
+  return null;
+}
+
+function InvalidateSize() {
+  const map = useMap();
+  useEffect(() => {
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [map]);
   return null;
 }
 
@@ -111,19 +105,21 @@ export default function MapPage() {
   };
 
   const center: [number, number] = [14.5995, 120.9842];
+  const tileUrl = `${import.meta.env.BASE_URL}api/tiles/{z}/{x}/{y}.png`.replace(/\/+api\//, "/api/");
 
   return (
-    <div className="flex-1 relative overflow-hidden" style={{ height: "calc(100vh - 4rem)" }}>
+    <div style={{ position: "relative", flex: 1, height: "calc(100vh - 4rem)", overflow: "hidden" }}>
       <MapContainer
         center={center}
         zoom={13}
-        style={{ width: "100%", height: "100%" }}
+        style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }}
         scrollWheelZoom={true}
         zoomControl={false}
       >
+        <InvalidateSize />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url={tileUrl}
           maxZoom={19}
         />
 
@@ -138,7 +134,6 @@ export default function MapPage() {
         )}
 
         {filteredVehicles.map((vehicle) => {
-          const IconComp = vehicleIcons[vehicle.type] || Car;
           const color = vehicleColors[vehicle.type] || "#666";
           return (
             <Marker
@@ -239,7 +234,7 @@ export default function MapPage() {
                 <label
                   key={type}
                   htmlFor={`type-${type}`}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer group transition-colors"
+                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
                 >
                   <Checkbox
                     id={`type-${type}`}

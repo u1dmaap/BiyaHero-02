@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useListSchedules, VehicleType, ListSchedulesSortBy, getListSchedulesQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
-import { ArrowRight, Clock, Coins, MapPin, Users, Calendar, Filter } from "lucide-react";
+import { ArrowRight, Clock, Coins, MapPin, Users, Calendar, Filter, Map } from "lucide-react";
 import { Link } from "wouter";
+import { LocationPickerMap } from "@/components/location-picker-map";
 
 export default function SearchPage() {
-  const [location, setLocation] = useLocation();
+  const [, setLocation] = useLocation();
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
   
@@ -22,6 +23,8 @@ export default function SearchPage() {
   const [date, setDate] = useState(searchParams.get("date") || "");
   const [vehicleType, setVehicleType] = useState<VehicleType | "all">((searchParams.get("vehicleType") as VehicleType) || "all");
   const [sortBy, setSortBy] = useState<ListSchedulesSortBy>(ListSchedulesSortBy.departureTime);
+
+  const [pickerOpen, setPickerOpen] = useState<"origin" | "destination" | null>(null);
 
   const { data: schedules, isLoading } = useListSchedules({
     origin: origin || undefined,
@@ -54,21 +57,76 @@ export default function SearchPage() {
 
   return (
     <div className="flex-1 bg-muted/20 min-h-screen">
+      <LocationPickerMap
+        open={pickerOpen === "origin"}
+        onClose={() => setPickerOpen(null)}
+        onConfirm={(name) => { setOrigin(name); setPickerOpen(null); }}
+        title="Pick Origin on Map"
+      />
+      <LocationPickerMap
+        open={pickerOpen === "destination"}
+        onClose={() => setPickerOpen(null)}
+        onConfirm={(name) => { setDestination(name); setPickerOpen(null); }}
+        title="Pick Destination on Map"
+      />
+
       {/* Search Header */}
       <div className="bg-card border-b border-border sticky top-16 z-40 shadow-sm">
         <div className="container mx-auto px-4 py-4">
           <form onSubmit={handleSearch} className="flex flex-col lg:flex-row gap-4 items-end">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 flex-1 w-full">
               <div className="space-y-1.5">
-                <Label htmlFor="origin" className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3"/> Origin</Label>
-                <Input id="origin" value={origin} onChange={e => setOrigin(e.target.value)} placeholder="Where from?" className="h-10" />
+                <Label htmlFor="origin" className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3 w-3"/> Origin
+                </Label>
+                <div className="flex gap-1.5">
+                  <Input
+                    id="origin"
+                    value={origin}
+                    onChange={e => setOrigin(e.target.value)}
+                    placeholder="Where from?"
+                    className="h-10 flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 shrink-0"
+                    title="Pick on map"
+                    onClick={() => setPickerOpen("origin")}
+                  >
+                    <Map className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="destination" className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3"/> Destination</Label>
-                <Input id="destination" value={destination} onChange={e => setDestination(e.target.value)} placeholder="Where to?" className="h-10" />
+                <Label htmlFor="destination" className="text-xs text-muted-foreground flex items-center gap-1">
+                  <MapPin className="h-3 w-3"/> Destination
+                </Label>
+                <div className="flex gap-1.5">
+                  <Input
+                    id="destination"
+                    value={destination}
+                    onChange={e => setDestination(e.target.value)}
+                    placeholder="Where to?"
+                    className="h-10 flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-10 w-10 shrink-0"
+                    title="Pick on map"
+                    onClick={() => setPickerOpen("destination")}
+                  >
+                    <Map className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="date" className="text-xs text-muted-foreground flex items-center gap-1"><Calendar className="h-3 w-3"/> Date</Label>
+                <Label htmlFor="date" className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Calendar className="h-3 w-3"/> Date
+                </Label>
                 <Input id="date" type="date" value={date} onChange={e => setDate(e.target.value)} className="h-10" />
               </div>
             </div>
@@ -143,7 +201,6 @@ export default function SearchPage() {
               <Card key={schedule.id} className="overflow-hidden hover-elevate transition-all border-l-4 border-l-primary group">
                 <CardContent className="p-0">
                   <div className="flex flex-col md:flex-row">
-                    {/* Left: Times and Route */}
                     <div className="flex-1 p-5 md:p-6 flex flex-col md:flex-row gap-6 md:items-center">
                       <div className="flex justify-between md:flex-col md:gap-8 md:min-w-[120px]">
                         <div>
@@ -169,7 +226,6 @@ export default function SearchPage() {
                       </div>
                     </div>
 
-                    {/* Right: Price and Action */}
                     <div className="bg-muted/50 p-5 md:p-6 flex flex-row md:flex-col items-center justify-between md:justify-center md:w-48 border-t md:border-t-0 md:border-l border-border gap-4">
                       <div className="text-left md:text-center">
                         <div className="text-xs text-muted-foreground uppercase tracking-wider font-medium mb-1">Fare per seat</div>
