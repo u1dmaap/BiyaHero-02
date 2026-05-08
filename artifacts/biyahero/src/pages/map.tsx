@@ -117,7 +117,7 @@ export default function MapPage() {
       <MapContainer
         center={center}
         zoom={13}
-        className="w-full h-full"
+        style={{ width: "100%", height: "100%" }}
         scrollWheelZoom={true}
         zoomControl={false}
       >
