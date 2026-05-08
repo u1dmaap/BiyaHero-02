@@ -75,7 +75,7 @@ export default function SearchPage() {
             <div className="flex gap-2 w-full lg:w-auto">
               <div className="space-y-1.5 flex-1 lg:w-40">
                 <Label className="text-xs text-muted-foreground">Type</Label>
-                <Select value={vehicleType} onValueChange={(v: any) => setVehicleType(v)}>
+                <Select value={vehicleType} onValueChange={(v) => setVehicleType(v as VehicleType | "all")}>
                   <SelectTrigger className="h-10">
                     <SelectValue placeholder="All types" />
                   </SelectTrigger>
@@ -89,7 +89,7 @@ export default function SearchPage() {
               </div>
               <div className="space-y-1.5 flex-1 lg:w-40">
                 <Label className="text-xs text-muted-foreground">Sort</Label>
-                <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as ListSchedulesSortBy)}>
                   <SelectTrigger className="h-10">
                     <SelectValue />
                   </SelectTrigger>

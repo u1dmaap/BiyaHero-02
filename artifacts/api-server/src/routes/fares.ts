@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { db, schedulesTable, vehiclesTable, routesTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { CompareFaresQueryParams, CompareFaresResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -39,20 +39,23 @@ router.get("/fares/compare", async (req, res): Promise<void> => {
       vehicleType: vehiclesTable.type,
       fare: schedulesTable.fare,
       estimatedMinutes: routesTable.estimatedMinutes,
-      scheduleId: schedulesTable.id,
+      scheduleDate: schedulesTable.date,
+      routeOrigin: routesTable.origin,
+      routeDestination: routesTable.destination,
     })
     .from(schedulesTable)
     .innerJoin(routesTable, eq(schedulesTable.routeId, routesTable.id))
-    .innerJoin(vehiclesTable, eq(schedulesTable.vehicleId, vehiclesTable.id))
-    .where(eq(routesTable.origin, origin));
+    .innerJoin(vehiclesTable, eq(schedulesTable.vehicleId, vehiclesTable.id));
 
-  const filtered = results.filter(
-    (r) =>
-      r.vehicleType !== null &&
-      (!destination ||
-        true) &&
-      (!date || true),
-  );
+  const dateStr = date instanceof Date ? date.toISOString().split("T")[0] : date;
+
+  const filtered = results.filter((r) => {
+    if (r.vehicleType === null) return false;
+    if (r.routeOrigin.toLowerCase() !== origin.toLowerCase()) return false;
+    if (destination && r.routeDestination.toLowerCase() !== destination.toLowerCase()) return false;
+    if (dateStr && r.scheduleDate !== dateStr) return false;
+    return true;
+  });
 
   const byType: Record<string, { fares: number[]; minutes: number; count: number }> = {};
   for (const r of filtered) {
@@ -62,27 +65,6 @@ router.get("/fares/compare", async (req, res): Promise<void> => {
     }
     byType[t].fares.push(r.fare);
     byType[t].count++;
-  }
-
-  if (Object.keys(byType).length === 0) {
-    const routeResults = await db
-      .select({
-        vehicleType: vehiclesTable.type,
-        fare: schedulesTable.fare,
-        estimatedMinutes: routesTable.estimatedMinutes,
-      })
-      .from(schedulesTable)
-      .innerJoin(routesTable, eq(schedulesTable.routeId, routesTable.id))
-      .innerJoin(vehiclesTable, eq(schedulesTable.vehicleId, vehiclesTable.id));
-
-    for (const r of routeResults) {
-      const t = r.vehicleType;
-      if (!byType[t]) {
-        byType[t] = { fares: [], minutes: r.estimatedMinutes, count: 0 };
-      }
-      byType[t].fares.push(r.fare);
-      byType[t].count++;
-    }
   }
 
   const comparisons = Object.entries(byType).map(([type, data]) => {

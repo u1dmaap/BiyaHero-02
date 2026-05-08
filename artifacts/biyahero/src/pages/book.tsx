@@ -209,7 +209,7 @@ export default function BookPage({ scheduleId }: { scheduleId: string }) {
                 </CardHeader>
                 <CardContent>
                   <form id="payment-form" onSubmit={handlePayment} className="space-y-6">
-                    <RadioGroup value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)} className="space-y-3">
+                    <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="space-y-3">
                       <div className="flex items-center space-x-2 border rounded-lg p-4 cursor-pointer hover:bg-muted/50 transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary/5">
                         <RadioGroupItem value={PaymentMethod.gcash} id="gcash" />
                         <Label htmlFor="gcash" className="flex-1 cursor-pointer flex items-center justify-between">
