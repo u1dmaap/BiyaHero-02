@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, sql } from "drizzle-orm";
-import { db, bookingsTable, schedulesTable, vehiclesTable, routesTable } from "@workspace/db";
+import { eq, and, sql, inArray } from "drizzle-orm";
+import { db, bookingsTable, schedulesTable, vehiclesTable, routesTable, paymentsTable } from "@workspace/db";
 import {
   ListBookingsQueryParams,
   CreateBookingBody,
@@ -87,6 +87,7 @@ router.post("/bookings", requireAuth, async (req: AuthRequest, res): Promise<voi
 
   const { scheduleId, seatCount, passengerName, passengerPhone } = parsed.data;
 
+  // Verify schedule exists before entering transaction
   const precheck = await getScheduleWithDetails(scheduleId);
   if (!precheck) {
     res.status(404).json({ error: "Not found", message: "Schedule not found" });
@@ -94,24 +95,28 @@ router.post("/bookings", requireAuth, async (req: AuthRequest, res): Promise<voi
   }
 
   let bookingId: number;
-  let farePerSeat: number;
 
   try {
-    const result = await db.transaction(async (tx) => {
-      const [schedule] = await tx
-        .select({
-          id: schedulesTable.id,
-          availableSeats: schedulesTable.availableSeats,
-          fare: schedulesTable.fare,
-        })
-        .from(schedulesTable)
-        .where(and(eq(schedulesTable.id, scheduleId), gte(schedulesTable.availableSeats, seatCount)));
+    bookingId = await db.transaction(async (tx) => {
+      // Atomically decrement seats only if sufficient availability exists.
+      // Using a conditional UPDATE avoids TOCTOU races between two concurrent bookings.
+      const decremented = await tx
+        .update(schedulesTable)
+        .set({ availableSeats: sql`${schedulesTable.availableSeats} - ${seatCount}` })
+        .where(
+          and(
+            eq(schedulesTable.id, scheduleId),
+            sql`${schedulesTable.availableSeats} >= ${seatCount}`,
+          ),
+        )
+        .returning({ id: schedulesTable.id });
 
-      if (!schedule) {
+      // If no rows updated, the guard failed — seats unavailable or another transaction won the race.
+      if (decremented.length === 0) {
         throw Object.assign(new Error("Not enough seats available"), { status: 400 });
       }
 
-      const totalFare = schedule.fare * seatCount;
+      const totalFare = precheck.fare * seatCount;
 
       const [booking] = await tx
         .insert(bookingsTable)
@@ -127,16 +132,8 @@ router.post("/bookings", requireAuth, async (req: AuthRequest, res): Promise<voi
         })
         .returning();
 
-      await tx
-        .update(schedulesTable)
-        .set({ availableSeats: sql`${schedulesTable.availableSeats} - ${seatCount}` })
-        .where(and(eq(schedulesTable.id, scheduleId), gte(schedulesTable.availableSeats, seatCount)));
-
-      return { bookingId: booking.id, farePerSeat: schedule.fare };
+      return booking.id;
     });
-
-    bookingId = result.bookingId;
-    farePerSeat = result.farePerSeat;
   } catch (err) {
     const e = err as Error & { status?: number };
     if (e.status === 400) {
@@ -174,36 +171,59 @@ router.delete("/bookings/:id", requireAuth, async (req: AuthRequest, res): Promi
     return;
   }
 
-  const [booking] = await db
-    .select()
-    .from(bookingsTable)
-    .where(and(eq(bookingsTable.id, params.data.id), eq(bookingsTable.userId, req.userId!)));
+  const bookingId = params.data.id;
+  let updatedBookingId: number;
 
-  if (!booking) {
-    res.status(404).json({ error: "Not found", message: "Booking not found" });
+  try {
+    updatedBookingId = await db.transaction(async (tx) => {
+      // Update status only if the booking belongs to this user and is still cancellable.
+      // The WHERE guard makes this idempotent — a second concurrent cancel hits 0 rows.
+      const cancelled = await tx
+        .update(bookingsTable)
+        .set({ status: "cancelled" })
+        .where(
+          and(
+            eq(bookingsTable.id, bookingId),
+            eq(bookingsTable.userId, req.userId!),
+            inArray(bookingsTable.status, ["pending", "confirmed"]),
+          ),
+        )
+        .returning({ id: bookingsTable.id, scheduleId: bookingsTable.scheduleId, seatCount: bookingsTable.seatCount });
+
+      if (cancelled.length === 0) {
+        // Either not found/not owned, or already cancelled/completed.
+        const [existing] = await tx
+          .select({ status: bookingsTable.status })
+          .from(bookingsTable)
+          .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.userId, req.userId!)));
+
+        if (!existing) throw Object.assign(new Error("Booking not found"), { status: 404 });
+        throw Object.assign(new Error("Cannot cancel this booking"), { status: 400 });
+      }
+
+      const { scheduleId, seatCount } = cancelled[0];
+
+      // Restore seats atomically in the same transaction.
+      await tx
+        .update(schedulesTable)
+        .set({ availableSeats: sql`${schedulesTable.availableSeats} + ${seatCount}` })
+        .where(eq(schedulesTable.id, scheduleId));
+
+      return cancelled[0].id;
+    });
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 404) {
+      res.status(404).json({ error: "Not found", message: e.message });
+    } else if (e.status === 400) {
+      res.status(400).json({ error: "Bad request", message: e.message });
+    } else {
+      res.status(500).json({ error: "Internal server error", message: "Cancellation failed" });
+    }
     return;
   }
 
-  if (booking.status === "completed" || booking.status === "cancelled") {
-    res.status(400).json({ error: "Bad request", message: "Cannot cancel this booking" });
-    return;
-  }
-
-  const [updated] = await db
-    .update(bookingsTable)
-    .set({ status: "cancelled" })
-    .where(eq(bookingsTable.id, params.data.id))
-    .returning();
-
-  const [schedule] = await db.select().from(schedulesTable).where(eq(schedulesTable.id, booking.scheduleId));
-  if (schedule) {
-    await db
-      .update(schedulesTable)
-      .set({ availableSeats: schedule.availableSeats + booking.seatCount })
-      .where(eq(schedulesTable.id, booking.scheduleId));
-  }
-
-  const enriched = await getBookingWithSchedule(updated.id);
+  const enriched = await getBookingWithSchedule(updatedBookingId);
   res.json(CancelBookingResponse.parse(enriched));
 });
 
@@ -220,30 +240,61 @@ router.post("/bookings/:id/pay", requireAuth, async (req: AuthRequest, res): Pro
     return;
   }
 
-  const [booking] = await db
-    .select()
-    .from(bookingsTable)
-    .where(and(eq(bookingsTable.id, params.data.id), eq(bookingsTable.userId, req.userId!)));
-
-  if (!booking) {
-    res.status(404).json({ error: "Not found", message: "Booking not found" });
-    return;
-  }
-
-  if (booking.paymentStatus === "paid") {
-    res.status(400).json({ error: "Bad request", message: "Booking already paid" });
-    return;
-  }
-
+  const bookingId = params.data.id;
   const transactionId = `TXN-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
 
-  const [updated] = await db
-    .update(bookingsTable)
-    .set({ paymentMethod: parsed.data.method, paymentStatus: "paid", status: "confirmed" })
-    .where(eq(bookingsTable.id, params.data.id))
-    .returning();
+  let updatedBookingId: number;
 
-  const enriched = await getBookingWithSchedule(updated.id);
+  try {
+    updatedBookingId = await db.transaction(async (tx) => {
+      // Guard: only pay if booking exists, belongs to user, and is unpaid.
+      const paid = await tx
+        .update(bookingsTable)
+        .set({ paymentMethod: parsed.data.method, paymentStatus: "paid", status: "confirmed" })
+        .where(
+          and(
+            eq(bookingsTable.id, bookingId),
+            eq(bookingsTable.userId, req.userId!),
+            eq(bookingsTable.paymentStatus, "unpaid"),
+          ),
+        )
+        .returning({ id: bookingsTable.id, totalFare: bookingsTable.totalFare, userId: bookingsTable.userId });
+
+      if (paid.length === 0) {
+        const [existing] = await tx
+          .select({ paymentStatus: bookingsTable.paymentStatus })
+          .from(bookingsTable)
+          .where(and(eq(bookingsTable.id, bookingId), eq(bookingsTable.userId, req.userId!)));
+
+        if (!existing) throw Object.assign(new Error("Booking not found"), { status: 404 });
+        throw Object.assign(new Error("Booking already paid"), { status: 400 });
+      }
+
+      // Persist payment record for auditability.
+      await tx.insert(paymentsTable).values({
+        bookingId,
+        userId: paid[0].userId,
+        amount: paid[0].totalFare,
+        method: parsed.data.method,
+        status: "completed",
+        transactionId,
+      });
+
+      return paid[0].id;
+    });
+  } catch (err) {
+    const e = err as Error & { status?: number };
+    if (e.status === 404) {
+      res.status(404).json({ error: "Not found", message: e.message });
+    } else if (e.status === 400) {
+      res.status(400).json({ error: "Bad request", message: e.message });
+    } else {
+      res.status(500).json({ error: "Internal server error", message: "Payment failed" });
+    }
+    return;
+  }
+
+  const enriched = await getBookingWithSchedule(updatedBookingId);
 
   res.json(
     PayBookingResponse.parse({
