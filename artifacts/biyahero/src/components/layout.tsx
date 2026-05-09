@@ -21,8 +21,6 @@ export function Navbar() {
 
   const commuterNavItems = [
     { href: "/map", label: "Map", icon: Map },
-    { href: "/search", label: "Search", icon: Search },
-    { href: "/compare", label: "Compare", icon: ListTree },
   ];
 
   const navItems = commuterNavItems;
