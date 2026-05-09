@@ -70,6 +70,19 @@ function createVehicleIcon(color: string) {
 function createActiveTripIcon() {
   return new L.DivIcon({ className: "", html: pin(ACTIVE_TRIP_COLOR, 36), iconSize: [36, 44], iconAnchor: [18, 44], popupAnchor: [0, -46] });
 }
+function createActiveDriverIcon() {
+  const size = 38;
+  const h = Math.round(size * 1.25);
+  const color = "#16A34A";
+  const html = `
+    <div style="position:relative;width:${size + 24}px;height:${h + 12}px;display:flex;align-items:flex-start;justify-content:center;">
+      <div class="driver-pulse-ring" style="position:absolute;top:0;left:12px;width:${size + 12}px;height:${size + 12}px;border-radius:50%;border:3px solid ${color};opacity:0;animation:driver-pulse 1.6s ease-out infinite;"></div>
+      <div style="position:absolute;top:6px;left:12px;">
+        ${pin(color, size)}
+      </div>
+    </div>`;
+  return new L.DivIcon({ className: "", html, iconSize: [size + 24, h + 12], iconAnchor: [(size + 24) / 2, h + 12], popupAnchor: [0, -(h + 14)] });
+}
 function createUserIcon() {
   return new L.DivIcon({ className: "", html: `<div style="width:20px;height:20px;border-radius:50%;background:#2563EB;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 4px 12px rgba(0,0,0,0.3);"></div>`, iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -14] });
 }
@@ -348,7 +361,8 @@ function CommuterMapView() {
   const [bookingVehicle, setBookingVehicle] = useState<VehicleForBooking | null>(null);
   const [activeTrip, setActiveTrip] = useState<ActiveTrip | null>(null);
 
-  const { data: vehicles, isLoading, refetch } = useGetMapVehicles({ query: { queryKey: ["map-vehicles"], refetchInterval: 30000 } } as Parameters<typeof useGetMapVehicles>[0]);
+  const refetchInterval = activeTrip ? 5000 : 30000;
+  const { data: vehicles, isLoading, refetch } = useGetMapVehicles({ query: { queryKey: ["map-vehicles"], refetchInterval } } as Parameters<typeof useGetMapVehicles>[0]);
 
   useEffect(() => {
     customFetch<ActiveTrip[]>("/api/custom-trips").then((trips) => {
@@ -356,6 +370,17 @@ function CommuterMapView() {
       setActiveTrip(active);
     }).catch(() => {});
   }, []);
+
+  const activeDriverVehicle = useMemo(() => {
+    if (!activeTrip || !vehicles) return null;
+    return vehicles.find((v) => v.id === activeTrip.vehicleId) ?? null;
+  }, [activeTrip, vehicles]);
+
+  useEffect(() => {
+    if (activeDriverVehicle && activeTrip?.status === "confirmed") {
+      setFlyTo({ lat: activeDriverVehicle.currentLat, lng: activeDriverVehicle.currentLng });
+    }
+  }, [activeDriverVehicle?.currentLat, activeDriverVehicle?.currentLng, activeTrip?.status]);
 
   const filteredVehicles = useMemo(() => {
     if (!vehicles) return [];
@@ -389,6 +414,8 @@ function CommuterMapView() {
       <style>{`
         @keyframes spin-once { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .spin-once { animation: spin-once 0.6s ease-in-out; }
+        @keyframes driver-pulse { 0% { transform: scale(0.6); opacity: 0.8; } 100% { transform: scale(2.2); opacity: 0; } }
+        .driver-pulse-ring { animation: driver-pulse 1.6s ease-out infinite; }
       `}</style>
 
       <MapContainer center={center} zoom={13} style={{ width: "100%", height: "100%", position: "absolute", inset: 0 }} scrollWheelZoom={true} zoomControl={false}>
@@ -400,7 +427,38 @@ function CommuterMapView() {
             <Popup><div className="p-1 text-sm font-semibold text-blue-700">Your location</div></Popup>
           </Marker>
         )}
-        {filteredVehicles.map((vehicle) => {
+        {/* Active driver vehicle — always shown, with pulsing green pin */}
+        {activeDriverVehicle && (() => {
+          const v = activeDriverVehicle;
+          const color = "#16A34A";
+          return (
+            <Marker key={`active-driver-${v.id}`} position={[v.currentLat, v.currentLng]} icon={createActiveDriverIcon()} zIndexOffset={1000}>
+              <Popup minWidth={210}>
+                <div className="p-1">
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-green-100">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse" />
+                      <strong className="text-sm text-green-800">Your Driver</strong>
+                    </div>
+                    <span className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-800">{v.driverStatus ?? v.status}</span>
+                  </div>
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-500">Plate</span><span className="font-mono font-bold">{v.plateNumber}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Operator</span><span className="font-medium">{v.operator}</span></div>
+                    <div className="flex justify-between"><span className="text-gray-500">Type</span><span className="capitalize font-medium">{v.type.replace("_", " ")}</span></div>
+                  </div>
+                  <div className="mt-2 pt-2 border-t border-green-100 text-[11px] text-green-700 bg-green-50 rounded-lg px-2 py-1.5 text-center font-medium">
+                    {activeTrip?.status === "confirmed" ? "On the way to pick you up!" : "Waiting for driver confirmation…"}
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })()}
+
+        {filteredVehicles
+          .filter((v) => v.id !== activeDriverVehicle?.id)
+          .map((vehicle) => {
           const color = vehicleColors[vehicle.type] || "#666";
           return (
             <Marker key={vehicle.id} position={[vehicle.currentLat, vehicle.currentLng]} icon={createVehicleIcon(color)}>
