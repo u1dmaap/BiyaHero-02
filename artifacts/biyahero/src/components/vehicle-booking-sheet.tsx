@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { LocationPickerMap, type PickedLocation } from "@/components/location-picker-map";
 import {
   MapPin, CheckCircle2, HourglassIcon, Navigation, LocateFixed, Loader2,
+  Banknote, Smartphone, CreditCard,
 } from "lucide-react";
 
 interface VehicleInfo {
@@ -28,6 +29,13 @@ interface VehicleBookingSheetProps {
   onClose: () => void;
 }
 
+const PAYMENT_METHODS = [
+  { id: "cash",   label: "Cash",   icon: Banknote,    desc: "Pay the driver directly" },
+  { id: "gcash",  label: "GCash",  icon: Smartphone,  desc: "Send via GCash" },
+  { id: "maya",   label: "Maya",   icon: Smartphone,  desc: "Send via Maya" },
+  { id: "card",   label: "Card",   icon: CreditCard,  desc: "Debit / Credit card" },
+];
+
 export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetProps) {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -41,6 +49,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
   const [customPhone, setCustomPhone] = useState("");
   const [customSeats, setCustomSeats] = useState(1);
   const [customNotes, setCustomNotes] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("cash");
   const [isSendingCustom, setIsSendingCustom] = useState(false);
   const [locatingFor, setLocatingFor] = useState<"pickup" | "dropoff" | null>(null);
 
@@ -61,7 +70,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
           const addr = data.address || {};
           name = addr.suburb || addr.neighbourhood || addr.village || addr.town
             || addr.city_district || addr.city || data.display_name?.split(",")[0] || name;
-        } catch { /* use coords as fallback */ }
+        } catch { /* coords fallback */ }
         const loc: PickedLocation = { name, lat, lng };
         if (type === "pickup") setPickup(loc);
         else setDropoff(loc);
@@ -81,6 +90,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
     setCustomPhone("");
     setCustomSeats(1);
     setCustomNotes("");
+    setPaymentMethod("cash");
   };
 
   const handleClose = () => { resetAll(); onClose(); };
@@ -101,6 +111,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
           passengerPhone: customPhone || undefined,
           seatCount: customSeats,
           notes: customNotes || undefined,
+          paymentMethod,
         }),
       });
       setCustomStep(4);
@@ -149,6 +160,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
           {/* Content */}
           <div className="flex-1 overflow-y-auto px-5 py-4">
 
+            {/* ── Step 1: Pickup ─────────────────────────────── */}
             {customStep === 1 && (
               <div className="space-y-4">
                 <div>
@@ -156,7 +168,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <LocateFixed className="h-4 w-4 text-green-600" />
                     Where should we pick you up?
                   </p>
-                  <p className="text-xs text-muted-foreground mb-4">Pick your exact location on the map, or use GPS.</p>
+                  <p className="text-xs text-muted-foreground mb-4">Pick on the map or tap to use your GPS location.</p>
                 </div>
                 {pickup ? (
                   <div className="rounded-xl border-2 border-green-400 bg-green-50 p-4 space-y-2">
@@ -166,33 +178,54 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <p className="text-sm font-medium">{pickup.name}</p>
                     <p className="text-xs text-muted-foreground font-mono">{pickup.lat.toFixed(5)}, {pickup.lng.toFixed(5)}</p>
                     <div className="flex gap-2 pt-1">
-                      <Button variant="outline" size="sm" onClick={() => setPickerOpen("pickup")}>Change on map</Button>
-                      <Button variant="outline" size="sm" onClick={() => useCurrentLocation("pickup")} disabled={locatingFor === "pickup"}>
-                        {locatingFor === "pickup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
+                      <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen("pickup")}>
+                        Change on map
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => useCurrentLocation("pickup")}
+                        disabled={locatingFor === "pickup"}
+                        className="w-9 p-0"
+                      >
+                        {locatingFor === "pickup"
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <LocateFixed className="h-3.5 w-3.5" />}
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <Button variant="outline" className="w-full h-20 flex-col gap-2 border-dashed border-2" onClick={() => setPickerOpen("pickup")}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-20 flex-col gap-2 border-dashed border-2"
+                      onClick={() => setPickerOpen("pickup")}
+                    >
                       <MapPin className="h-5 w-5 text-green-600" />
                       <span className="text-sm font-medium">Pick on map</span>
                     </Button>
                     <Button
+                      type="button"
                       variant="outline"
-                      className="w-full flex items-center justify-center gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                      className="w-full h-11 border-blue-200 text-blue-700 hover:bg-blue-50"
                       onClick={() => useCurrentLocation("pickup")}
                       disabled={locatingFor === "pickup"}
                     >
-                      {locatingFor === "pickup"
-                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Getting your location…</>
-                        : <><LocateFixed className="h-4 w-4" /> Use my current location</>}
+                      <span className="flex items-center gap-2">
+                        {locatingFor === "pickup"
+                          ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                          : <LocateFixed className="h-4 w-4 shrink-0" />}
+                        <span>{locatingFor === "pickup" ? "Getting your location…" : "Use my current location"}</span>
+                      </span>
                     </Button>
                   </div>
                 )}
               </div>
             )}
 
+            {/* ── Step 2: Dropoff ─────────────────────────────── */}
             {customStep === 2 && (
               <div className="space-y-4">
                 <div>
@@ -200,7 +233,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <MapPin className="h-4 w-4 text-red-500" />
                     Where do you want to go?
                   </p>
-                  <p className="text-xs text-muted-foreground mb-4">Pick your dropoff on the map, or use GPS.</p>
+                  <p className="text-xs text-muted-foreground mb-4">Pick your dropoff on the map or use GPS.</p>
                 </div>
                 <div className="bg-muted/40 rounded-xl p-3 text-xs text-muted-foreground flex items-center gap-2">
                   <LocateFixed className="h-3.5 w-3.5 text-green-600 shrink-0" />
@@ -214,33 +247,54 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <p className="text-sm font-medium">{dropoff.name}</p>
                     <p className="text-xs text-muted-foreground font-mono">{dropoff.lat.toFixed(5)}, {dropoff.lng.toFixed(5)}</p>
                     <div className="flex gap-2 pt-1">
-                      <Button variant="outline" size="sm" onClick={() => setPickerOpen("dropoff")}>Change on map</Button>
-                      <Button variant="outline" size="sm" onClick={() => useCurrentLocation("dropoff")} disabled={locatingFor === "dropoff"}>
-                        {locatingFor === "dropoff" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
+                      <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen("dropoff")}>
+                        Change on map
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => useCurrentLocation("dropoff")}
+                        disabled={locatingFor === "dropoff"}
+                        className="w-9 p-0"
+                      >
+                        {locatingFor === "dropoff"
+                          ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          : <LocateFixed className="h-3.5 w-3.5" />}
                       </Button>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    <Button variant="outline" className="w-full h-20 flex-col gap-2 border-dashed border-2" onClick={() => setPickerOpen("dropoff")}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full h-20 flex-col gap-2 border-dashed border-2"
+                      onClick={() => setPickerOpen("dropoff")}
+                    >
                       <MapPin className="h-5 w-5 text-red-500" />
                       <span className="text-sm font-medium">Pick on map</span>
                     </Button>
                     <Button
+                      type="button"
                       variant="outline"
-                      className="w-full flex items-center justify-center gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                      className="w-full h-11 border-blue-200 text-blue-700 hover:bg-blue-50"
                       onClick={() => useCurrentLocation("dropoff")}
                       disabled={locatingFor === "dropoff"}
                     >
-                      {locatingFor === "dropoff"
-                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Getting your location…</>
-                        : <><LocateFixed className="h-4 w-4" /> Use my current location</>}
+                      <span className="flex items-center gap-2">
+                        {locatingFor === "dropoff"
+                          ? <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                          : <LocateFixed className="h-4 w-4 shrink-0" />}
+                        <span>{locatingFor === "dropoff" ? "Getting your location…" : "Use my current location"}</span>
+                      </span>
                     </Button>
                   </div>
                 )}
               </div>
             )}
 
+            {/* ── Step 3: Details + Payment ─────────────────── */}
             {customStep === 3 && (
               <form id="custom-form" onSubmit={handleCustomSubmit} className="space-y-4">
                 <div className="bg-muted/40 rounded-xl p-3 text-xs space-y-1.5">
@@ -253,11 +307,14 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <span className="font-medium text-foreground">{dropoff?.name}</span>
                   </div>
                 </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="ctime">Preferred Pickup Time</Label>
                   <Input id="ctime" type="datetime-local" required value={customTime} onChange={e => setCustomTime(e.target.value)} />
                 </div>
+
                 <Separator />
+
                 <div className="space-y-1.5">
                   <Label>Seats</Label>
                   <div className="flex items-center gap-4">
@@ -266,18 +323,56 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <Button type="button" variant="outline" size="icon" className="h-9 w-9" onClick={() => setCustomSeats(customSeats + 1)}>+</Button>
                   </div>
                 </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="cname">Your Name</Label>
                   <Input id="cname" required value={customName} onChange={e => setCustomName(e.target.value)} />
                 </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="cphone">Mobile <span className="text-muted-foreground">(optional)</span></Label>
                   <Input id="cphone" type="tel" placeholder="09xx xxx xxxx" value={customPhone} onChange={e => setCustomPhone(e.target.value)} />
                 </div>
+
                 <div className="space-y-1.5">
                   <Label htmlFor="cnotes">Notes <span className="text-muted-foreground">(optional)</span></Label>
                   <Input id="cnotes" placeholder="e.g. landmark, luggage..." value={customNotes} onChange={e => setCustomNotes(e.target.value)} />
                 </div>
+
+                <Separator />
+
+                {/* Payment method */}
+                <div className="space-y-2">
+                  <Label>Payment Method</Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PAYMENT_METHODS.map((pm) => {
+                      const Icon = pm.icon;
+                      const selected = paymentMethod === pm.id;
+                      return (
+                        <button
+                          key={pm.id}
+                          type="button"
+                          onClick={() => setPaymentMethod(pm.id)}
+                          className={`flex items-center gap-2.5 rounded-xl border-2 px-3 py-2.5 text-left transition-all ${
+                            selected
+                              ? "border-primary bg-primary/5 text-primary"
+                              : "border-border bg-background text-foreground hover:border-primary/40"
+                          }`}
+                        >
+                          <Icon className={`h-4 w-4 shrink-0 ${selected ? "text-primary" : "text-muted-foreground"}`} />
+                          <div>
+                            <p className={`text-xs font-semibold leading-tight ${selected ? "text-primary" : ""}`}>{pm.label}</p>
+                            <p className="text-[10px] text-muted-foreground leading-tight">{pm.desc}</p>
+                          </div>
+                          {selected && (
+                            <CheckCircle2 className="h-3.5 w-3.5 ml-auto shrink-0 text-primary" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
                   <HourglassIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                   <p>The driver will review your trip request and approve or reject it.</p>
@@ -285,6 +380,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
               </form>
             )}
 
+            {/* ── Step 4: Confirmation ─────────────────────── */}
             {customStep === 4 && (
               <div className="text-center py-10 space-y-5">
                 <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
@@ -309,6 +405,11 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <Navigation className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
                     <span><span className="text-muted-foreground">Vehicle:</span> <span className="font-medium">{vehicle?.plateNumber}</span></span>
                   </div>
+                  <div className="flex items-start gap-2">
+                    {paymentMethod === "cash" ? <Banknote className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
+                      : <Smartphone className="h-3.5 w-3.5 text-blue-600 mt-0.5 shrink-0" />}
+                    <span><span className="text-muted-foreground">Payment:</span> <span className="font-medium capitalize">{PAYMENT_METHODS.find(p => p.id === paymentMethod)?.label}</span></span>
+                  </div>
                 </div>
                 <Button onClick={handleClose} className="w-full">Back to Map</Button>
               </div>
@@ -319,17 +420,17 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
           {customStep < 4 && (
             <div className="px-5 pb-5 pt-3 border-t shrink-0 flex gap-3">
               {customStep > 1 && (
-                <Button variant="outline" className="flex-1" onClick={() => setCustomStep((s) => (s - 1) as 1 | 2 | 3 | 4)}>
+                <Button type="button" variant="outline" className="flex-1" onClick={() => setCustomStep((s) => (s - 1) as 1 | 2 | 3 | 4)}>
                   Back
                 </Button>
               )}
               {customStep === 1 && (
-                <Button className="flex-1" disabled={!pickup} onClick={() => setCustomStep(2)}>
+                <Button type="button" className="flex-1" disabled={!pickup || locatingFor === "pickup"} onClick={() => setCustomStep(2)}>
                   Next: Set Dropoff
                 </Button>
               )}
               {customStep === 2 && (
-                <Button className="flex-1" disabled={!dropoff} onClick={() => setCustomStep(3)}>
+                <Button type="button" className="flex-1" disabled={!dropoff || locatingFor === "dropoff"} onClick={() => setCustomStep(3)}>
                   Next: Trip Details
                 </Button>
               )}

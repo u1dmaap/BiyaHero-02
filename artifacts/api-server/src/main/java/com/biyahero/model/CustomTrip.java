@@ -20,6 +20,7 @@ public class CustomTrip {
     private String notes;
     private Integer rating;
     private String ratingComment;
+    private String paymentMethod;
     private OffsetDateTime createdAt;
 
     public int getId() { return id; }
@@ -56,6 +57,8 @@ public class CustomTrip {
     public void setRating(Integer rating) { this.rating = rating; }
     public String getRatingComment() { return ratingComment; }
     public void setRatingComment(String ratingComment) { this.ratingComment = ratingComment; }
+    public String getPaymentMethod() { return paymentMethod; }
+    public void setPaymentMethod(String paymentMethod) { this.paymentMethod = paymentMethod; }
     public OffsetDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(OffsetDateTime createdAt) { this.createdAt = createdAt; }
 }

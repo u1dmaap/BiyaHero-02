@@ -42,6 +42,7 @@ public class CustomTripRepository {
         int rating = rs.getInt("rating");
         t.setRating(rs.wasNull() ? null : rating);
         t.setRatingComment(rs.getString("rating_comment"));
+        t.setPaymentMethod(rs.getString("payment_method"));
         Timestamp ts = rs.getTimestamp("created_at");
         if (ts != null) t.setCreatedAt(ts.toInstant().atOffset(java.time.ZoneOffset.UTC));
         return t;
@@ -67,7 +68,7 @@ public class CustomTripRepository {
     public CustomTrip insert(int userId, int vehicleId, double pickupLat, double pickupLng, String pickupLabel,
                               double dropoffLat, double dropoffLng, String dropoffLabel,
                               String requestedTime, String passengerName, String passengerPhone,
-                              int seatCount, String notes) {
+                              int seatCount, String notes, String paymentMethod) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
         jdbc.update(con -> {
             PreparedStatement ps = con.prepareStatement(
@@ -75,8 +76,8 @@ public class CustomTripRepository {
                 INSERT INTO custom_trips
                   (user_id, vehicle_id, pickup_lat, pickup_lng, pickup_label,
                    dropoff_lat, dropoff_lng, dropoff_label, requested_time,
-                   passenger_name, passenger_phone, seat_count, status, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?) RETURNING id
+                   passenger_name, passenger_phone, seat_count, status, notes, payment_method)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING id
                 """,
                 Statement.RETURN_GENERATED_KEYS);
             ps.setInt(1, userId);
@@ -94,6 +95,7 @@ public class CustomTripRepository {
             ps.setInt(12, seatCount);
             if (notes != null) ps.setString(13, notes);
             else ps.setNull(13, java.sql.Types.VARCHAR);
+            ps.setString(14, paymentMethod != null ? paymentMethod : "cash");
             return ps;
         }, keyHolder);
         int id = ((Number) keyHolder.getKeys().get("id")).intValue();

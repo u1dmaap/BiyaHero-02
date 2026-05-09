@@ -58,11 +58,12 @@ public class CustomTripController {
         String passengerPhone = (String) body.get("passengerPhone");
         int seatCount = body.get("seatCount") != null ? ((Number) body.get("seatCount")).intValue() : 1;
         String notes = (String) body.get("notes");
+        String paymentMethod = (String) body.get("paymentMethod");
 
         CustomTrip trip = customTripRepo.insert(userId, vehicleId,
             pickupLatNum.doubleValue(), pickupLngNum.doubleValue(), pickupLabel,
             dropoffLatNum.doubleValue(), dropoffLngNum.doubleValue(), dropoffLabel,
-            requestedTime, passengerName, passengerPhone, seatCount, notes);
+            requestedTime, passengerName, passengerPhone, seatCount, notes, paymentMethod);
 
         return ResponseEntity.status(201).body(trip);
     }
