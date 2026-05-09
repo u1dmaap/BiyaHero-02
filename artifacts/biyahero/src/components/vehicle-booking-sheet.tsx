@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { customFetch } from "@workspace/api-client-react";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { LocationPickerMap, type PickedLocation } from "@/components/location-picker-map";
 import {
-  MapPin, CheckCircle2, HourglassIcon, Navigation, LocateFixed,
+  MapPin, CheckCircle2, HourglassIcon, Navigation, LocateFixed, Loader2,
 } from "lucide-react";
 
 interface VehicleInfo {
@@ -42,6 +42,35 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
   const [customSeats, setCustomSeats] = useState(1);
   const [customNotes, setCustomNotes] = useState("");
   const [isSendingCustom, setIsSendingCustom] = useState(false);
+  const [locatingFor, setLocatingFor] = useState<"pickup" | "dropoff" | null>(null);
+
+  const useCurrentLocation = useCallback((type: "pickup" | "dropoff") => {
+    if (!navigator.geolocation) return;
+    setLocatingFor(type);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        let name = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+        try {
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`,
+            { headers: { "User-Agent": "PasaHeroGo/1.0" } }
+          );
+          const data = await res.json();
+          const addr = data.address || {};
+          name = addr.suburb || addr.neighbourhood || addr.village || addr.town
+            || addr.city_district || addr.city || data.display_name?.split(",")[0] || name;
+        } catch { /* use coords as fallback */ }
+        const loc: PickedLocation = { name, lat, lng };
+        if (type === "pickup") setPickup(loc);
+        else setDropoff(loc);
+        setLocatingFor(null);
+      },
+      () => setLocatingFor(null),
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  }, []);
 
   const resetAll = () => {
     setCustomStep(1);
@@ -127,7 +156,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <LocateFixed className="h-4 w-4 text-green-600" />
                     Where should we pick you up?
                   </p>
-                  <p className="text-xs text-muted-foreground mb-4">Click the button to open a map and tap your exact pickup spot.</p>
+                  <p className="text-xs text-muted-foreground mb-4">Pick your exact location on the map, or use GPS.</p>
                 </div>
                 {pickup ? (
                   <div className="rounded-xl border-2 border-green-400 bg-green-50 p-4 space-y-2">
@@ -136,13 +165,30 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     </div>
                     <p className="text-sm font-medium">{pickup.name}</p>
                     <p className="text-xs text-muted-foreground font-mono">{pickup.lat.toFixed(5)}, {pickup.lng.toFixed(5)}</p>
-                    <Button variant="outline" size="sm" className="mt-1" onClick={() => setPickerOpen("pickup")}>Change location</Button>
+                    <div className="flex gap-2 pt-1">
+                      <Button variant="outline" size="sm" onClick={() => setPickerOpen("pickup")}>Change on map</Button>
+                      <Button variant="outline" size="sm" onClick={() => useCurrentLocation("pickup")} disabled={locatingFor === "pickup"}>
+                        {locatingFor === "pickup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
                   </div>
                 ) : (
-                  <Button variant="outline" className="w-full h-24 flex-col gap-2 border-dashed border-2" onClick={() => setPickerOpen("pickup")}>
-                    <MapPin className="h-6 w-6 text-green-600" />
-                    <span className="text-sm font-medium">Tap to pick location on map</span>
-                  </Button>
+                  <div className="space-y-2">
+                    <Button variant="outline" className="w-full h-20 flex-col gap-2 border-dashed border-2" onClick={() => setPickerOpen("pickup")}>
+                      <MapPin className="h-5 w-5 text-green-600" />
+                      <span className="text-sm font-medium">Pick on map</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full flex items-center justify-center gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={() => useCurrentLocation("pickup")}
+                      disabled={locatingFor === "pickup"}
+                    >
+                      {locatingFor === "pickup"
+                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Getting your location…</>
+                        : <><LocateFixed className="h-4 w-4" /> Use my current location</>}
+                    </Button>
+                  </div>
                 )}
               </div>
             )}
@@ -154,7 +200,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     <MapPin className="h-4 w-4 text-red-500" />
                     Where do you want to go?
                   </p>
-                  <p className="text-xs text-muted-foreground mb-4">Select your exact dropoff point on the map.</p>
+                  <p className="text-xs text-muted-foreground mb-4">Pick your dropoff on the map, or use GPS.</p>
                 </div>
                 <div className="bg-muted/40 rounded-xl p-3 text-xs text-muted-foreground flex items-center gap-2">
                   <LocateFixed className="h-3.5 w-3.5 text-green-600 shrink-0" />
@@ -167,13 +213,30 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                     </div>
                     <p className="text-sm font-medium">{dropoff.name}</p>
                     <p className="text-xs text-muted-foreground font-mono">{dropoff.lat.toFixed(5)}, {dropoff.lng.toFixed(5)}</p>
-                    <Button variant="outline" size="sm" className="mt-1" onClick={() => setPickerOpen("dropoff")}>Change location</Button>
+                    <div className="flex gap-2 pt-1">
+                      <Button variant="outline" size="sm" onClick={() => setPickerOpen("dropoff")}>Change on map</Button>
+                      <Button variant="outline" size="sm" onClick={() => useCurrentLocation("dropoff")} disabled={locatingFor === "dropoff"}>
+                        {locatingFor === "dropoff" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5" />}
+                      </Button>
+                    </div>
                   </div>
                 ) : (
-                  <Button variant="outline" className="w-full h-24 flex-col gap-2 border-dashed border-2" onClick={() => setPickerOpen("dropoff")}>
-                    <MapPin className="h-6 w-6 text-red-500" />
-                    <span className="text-sm font-medium">Tap to pick location on map</span>
-                  </Button>
+                  <div className="space-y-2">
+                    <Button variant="outline" className="w-full h-20 flex-col gap-2 border-dashed border-2" onClick={() => setPickerOpen("dropoff")}>
+                      <MapPin className="h-5 w-5 text-red-500" />
+                      <span className="text-sm font-medium">Pick on map</span>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full flex items-center justify-center gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                      onClick={() => useCurrentLocation("dropoff")}
+                      disabled={locatingFor === "dropoff"}
+                    >
+                      {locatingFor === "dropoff"
+                        ? <><Loader2 className="h-4 w-4 animate-spin" /> Getting your location…</>
+                        : <><LocateFixed className="h-4 w-4" /> Use my current location</>}
+                    </Button>
+                  </div>
                 )}
               </div>
             )}

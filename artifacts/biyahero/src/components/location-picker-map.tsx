@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
-import { MapContainer, TileLayer, Marker, useMapEvents } from "react-leaflet";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from "react-leaflet";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { MapPin, Loader2 } from "lucide-react";
+import { MapPin, Loader2, LocateFixed } from "lucide-react";
 import L from "leaflet";
 
 const pickerIcon = new L.DivIcon({
@@ -34,6 +34,14 @@ function InvalidateSize() {
   return null;
 }
 
+function FlyTo({ coords }: { coords: [number, number] | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (coords) map.flyTo(coords, 16, { duration: 1 });
+  }, [coords, map]);
+  return null;
+}
+
 export interface PickedLocation {
   name: string;
   lat: number;
@@ -52,6 +60,8 @@ export function LocationPickerMap({ open, onClose, onConfirm, title, initialCent
   const [picked, setPicked] = useState<[number, number] | null>(null);
   const [placeName, setPlaceName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [flyTo, setFlyTo] = useState<[number, number] | null>(null);
 
   const tileUrl = `${import.meta.env.BASE_URL}api/tiles/{z}/{x}/{y}.png`.replace(/\/+api\//, "/api/");
 
@@ -85,17 +95,34 @@ export function LocationPickerMap({ open, onClose, onConfirm, title, initialCent
     }
   }, []);
 
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        setFlyTo(coords);
+        handlePick(coords[0], coords[1]);
+        setLocating(false);
+      },
+      () => { setLocating(false); },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
+
   const handleConfirm = () => {
     if (placeName && picked) {
       onConfirm({ name: placeName, lat: picked[0], lng: picked[1] });
       setPicked(null);
       setPlaceName(null);
+      setFlyTo(null);
     }
   };
 
   const handleClose = () => {
     setPicked(null);
     setPlaceName(null);
+    setFlyTo(null);
     onClose();
   };
 
@@ -107,7 +134,7 @@ export function LocationPickerMap({ open, onClose, onConfirm, title, initialCent
             <MapPin className="h-4 w-4 text-primary" />
             {title}
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">Click anywhere on the map to select a location.</p>
+          <p className="text-sm text-muted-foreground">Click anywhere on the map to select a location, or use your GPS.</p>
         </DialogHeader>
 
         <div style={{ height: 420, position: "relative" }}>
@@ -120,6 +147,7 @@ export function LocationPickerMap({ open, onClose, onConfirm, title, initialCent
               zoomControl={true}
             >
               <InvalidateSize />
+              <FlyTo coords={flyTo} />
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url={tileUrl}
@@ -132,7 +160,17 @@ export function LocationPickerMap({ open, onClose, onConfirm, title, initialCent
         </div>
 
         <DialogFooter className="px-5 py-4 border-t flex items-center gap-3">
-          <div className="flex-1 text-sm">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-1.5 text-xs mr-auto"
+            onClick={useCurrentLocation}
+            disabled={locating || loading}
+          >
+            {locating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LocateFixed className="h-3.5 w-3.5 text-blue-500" />}
+            {locating ? "Locating…" : "Use my location"}
+          </Button>
+          <div className="text-sm">
             {loading && (
               <span className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />

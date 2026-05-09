@@ -383,13 +383,11 @@ function CommuterMapView() {
     }).catch(() => {});
   }, []);
 
-  useEffect(() => { fetchTripStatus(); }, [fetchTripStatus]);
-
   useEffect(() => {
-    if (!activeTrip) return;
+    fetchTripStatus();
     const id = setInterval(fetchTripStatus, 5000);
     return () => clearInterval(id);
-  }, [activeTrip, fetchTripStatus]);
+  }, [fetchTripStatus]);
 
   const submitRating = async (tripId: number, skip = false) => {
     if (!skip && ratingValue === 0) return;
