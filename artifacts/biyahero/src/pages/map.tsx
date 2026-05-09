@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { useGetMapVehicles, VehicleType, customFetch } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, SlidersHorizontal, X, LocateFixed, RefreshCw, CheckCircle2, Clock, AlertCircle, MapPin, Navigation, Flag, History } from "lucide-react";
+import { Users, SlidersHorizontal, X, LocateFixed, RefreshCw, CheckCircle2, Clock, AlertCircle, MapPin, Navigation, Flag, History, Star } from "lucide-react";
 import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import L from "leaflet";
@@ -360,16 +360,59 @@ function CommuterMapView() {
   const [isRefreshSpinning, setIsRefreshSpinning] = useState(false);
   const [bookingVehicle, setBookingVehicle] = useState<VehicleForBooking | null>(null);
   const [activeTrip, setActiveTrip] = useState<ActiveTrip | null>(null);
+  const [completedTrip, setCompletedTrip] = useState<ActiveTrip | null>(null);
+  const [ratingValue, setRatingValue] = useState(0);
+  const [ratingHover, setRatingHover] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
+  const { toast } = useToast();
 
   const refetchInterval = activeTrip ? 5000 : 30000;
   const { data: vehicles, isLoading, refetch } = useGetMapVehicles({ query: { queryKey: ["map-vehicles"], refetchInterval } } as Parameters<typeof useGetMapVehicles>[0]);
 
-  useEffect(() => {
+  const fetchTripStatus = useCallback(() => {
     customFetch<ActiveTrip[]>("/api/custom-trips").then((trips) => {
       const active = trips.find((t) => t.status === "pending" || t.status === "confirmed") ?? null;
-      setActiveTrip(active);
+      setActiveTrip((prev) => {
+        if (prev && !active) {
+          const done = trips.find((t) => t.id === prev.id && t.status === "completed") ?? null;
+          if (done) setCompletedTrip(done);
+        }
+        return active;
+      });
     }).catch(() => {});
   }, []);
+
+  useEffect(() => { fetchTripStatus(); }, [fetchTripStatus]);
+
+  useEffect(() => {
+    if (!activeTrip) return;
+    const id = setInterval(fetchTripStatus, 5000);
+    return () => clearInterval(id);
+  }, [activeTrip, fetchTripStatus]);
+
+  const submitRating = async (tripId: number, skip = false) => {
+    if (!skip && ratingValue === 0) return;
+    setRatingSubmitting(true);
+    try {
+      if (!skip) {
+        await customFetch(`/api/custom-trips/${tripId}/rate`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rating: ratingValue, ratingComment: ratingComment || null }),
+        });
+        toast({ title: "Rating submitted!", description: "Thank you for your feedback." });
+      }
+    } catch {
+      toast({ title: "Could not submit rating", variant: "destructive" });
+    } finally {
+      setCompletedTrip(null);
+      setRatingValue(0);
+      setRatingHover(0);
+      setRatingComment("");
+      setRatingSubmitting(false);
+    }
+  };
 
   const activeDriverVehicle = useMemo(() => {
     if (!activeTrip || !vehicles) return null;
@@ -570,6 +613,85 @@ function CommuterMapView() {
       </div>
 
       <VehicleBookingSheet vehicle={bookingVehicle} onClose={() => setBookingVehicle(null)} />
+
+      {/* ── Trip complete / rating modal ─────────────────────────────── */}
+      {completedTrip && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)" }}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-gradient-to-br from-green-500 to-green-600 px-6 pt-8 pb-6 text-center text-white">
+              <div className="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center mx-auto mb-3">
+                <CheckCircle2 className="h-9 w-9 text-white" />
+              </div>
+              <h2 className="text-xl font-bold">Trip Complete!</h2>
+              <p className="text-green-100 text-sm mt-1">You've arrived at your destination.</p>
+            </div>
+
+            {/* Route summary */}
+            <div className="px-6 py-4 space-y-2 border-b border-gray-100">
+              <div className="flex items-start gap-2 text-sm">
+                <LocateFixed className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                <div><span className="text-gray-400 text-xs block">From</span><span className="font-medium text-gray-800">{completedTrip.pickupLabel}</span></div>
+              </div>
+              <div className="flex items-start gap-2 text-sm">
+                <MapPin className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
+                <div><span className="text-gray-400 text-xs block">To</span><span className="font-medium text-gray-800">{completedTrip.dropoffLabel}</span></div>
+              </div>
+            </div>
+
+            {/* Rating */}
+            <div className="px-6 py-5">
+              <p className="text-sm font-semibold text-gray-700 text-center mb-3">How was your ride?</p>
+              <div className="flex justify-center gap-2 mb-4">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    onClick={() => setRatingValue(star)}
+                    onMouseEnter={() => setRatingHover(star)}
+                    onMouseLeave={() => setRatingHover(0)}
+                    className="transition-transform hover:scale-110 focus:outline-none"
+                  >
+                    <Star
+                      className="h-9 w-9 transition-colors"
+                      fill={(ratingHover || ratingValue) >= star ? "#F59E0B" : "none"}
+                      stroke={(ratingHover || ratingValue) >= star ? "#F59E0B" : "#D1D5DB"}
+                      strokeWidth={1.5}
+                    />
+                  </button>
+                ))}
+              </div>
+              {ratingValue > 0 && (
+                <textarea
+                  value={ratingComment}
+                  onChange={(e) => setRatingComment(e.target.value)}
+                  placeholder="Leave a comment (optional)…"
+                  rows={2}
+                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 resize-none focus:outline-none focus:ring-2 focus:ring-green-400 text-gray-700 placeholder:text-gray-400"
+                />
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="px-6 pb-6 flex gap-2">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-xl"
+                onClick={() => submitRating(completedTrip.id, true)}
+                disabled={ratingSubmitting}
+              >
+                Skip
+              </Button>
+              <Button
+                className="flex-1 rounded-xl bg-green-600 hover:bg-green-700 text-white"
+                onClick={() => submitRating(completedTrip.id)}
+                disabled={ratingValue === 0 || ratingSubmitting}
+              >
+                {ratingSubmitting ? "Submitting…" : "Submit Rating"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
