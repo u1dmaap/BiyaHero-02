@@ -4,3 +4,4 @@ export * from "./routes";
 export * from "./schedules";
 export * from "./bookings";
 export * from "./payments";
+export * from "./custom_trips";

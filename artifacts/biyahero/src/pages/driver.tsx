@@ -11,7 +11,7 @@ import L from "leaflet";
 import {
   Truck, Users, MapPin, RefreshCw, CheckCircle2, Clock,
   Navigation, Wifi, WifiOff, AlertCircle, PhilippinePeso,
-  Bell, ThumbsUp, ThumbsDown, CalendarClock,
+  Bell, ThumbsUp, ThumbsDown, CalendarClock, LocateFixed,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -87,6 +87,23 @@ interface PendingRequest {
   destination: string;
 }
 
+interface CustomTripRequest {
+  id: number;
+  passengerName: string;
+  passengerPhone: string | null;
+  seatCount: number;
+  pickupLat: number;
+  pickupLng: number;
+  pickupLabel: string;
+  dropoffLat: number;
+  dropoffLng: number;
+  dropoffLabel: string;
+  requestedTime: string;
+  status: string;
+  notes: string | null;
+  createdAt: string;
+}
+
 interface DashboardData {
   vehicle: Vehicle;
   recentBookings: RecentBooking[];
@@ -124,7 +141,7 @@ function createPassengerIcon() {
 
 function InvalidateSize() {
   const map = useMap();
-  useLeafletEffect(() => {
+  useEffect(() => {
     const t1 = setTimeout(() => map.invalidateSize(), 100);
     const t2 = setTimeout(() => map.invalidateSize(), 500);
     return () => { clearTimeout(t1); clearTimeout(t2); };
@@ -138,23 +155,26 @@ export default function DriverDashboard() {
 
   const [data, setData] = useState<DashboardData | null>(null);
   const [requests, setRequests] = useState<PendingRequest[]>([]);
+  const [customRequests, setCustomRequests] = useState<CustomTripRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isUpdatingPassengers, setIsUpdatingPassengers] = useState(false);
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
-  const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
+  const [processingIds, setProcessingIds] = useState<Set<string>>(new Set());
 
   const tileUrl = `${import.meta.env.BASE_URL}api/tiles/{z}/{x}/{y}.png`.replace(/\/+api\//, "/api/");
 
   const fetchDashboard = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [result, reqs] = await Promise.all([
+      const [result, reqs, customReqs] = await Promise.all([
         customFetch<DashboardData>("/api/driver/dashboard"),
         customFetch<PendingRequest[]>("/api/driver/requests"),
+        customFetch<CustomTripRequest[]>("/api/driver/custom-requests"),
       ]);
       setData(result);
       setRequests(reqs);
+      setCustomRequests(customReqs);
     } catch {
       toast({ title: "Error", description: "Could not load dashboard.", variant: "destructive" });
     } finally {
@@ -164,21 +184,25 @@ export default function DriverDashboard() {
 
   const fetchRequests = useCallback(async () => {
     try {
-      const reqs = await customFetch<PendingRequest[]>("/api/driver/requests");
+      const [reqs, customReqs] = await Promise.all([
+        customFetch<PendingRequest[]>("/api/driver/requests"),
+        customFetch<CustomTripRequest[]>("/api/driver/custom-requests"),
+      ]);
       setRequests(reqs);
+      setCustomRequests(customReqs);
     } catch { /* silent */ }
   }, []);
 
   useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
 
-  // Poll for new requests every 10s
   useEffect(() => {
     const interval = setInterval(fetchRequests, 10000);
     return () => clearInterval(interval);
   }, [fetchRequests]);
 
   const handleApprove = async (id: number) => {
-    setProcessingIds((s) => new Set(s).add(id));
+    const key = `sched-${id}`;
+    setProcessingIds((s) => new Set(s).add(key));
     try {
       await customFetch(`/api/driver/requests/${id}/approve`, { method: "PUT" });
       setRequests((prev) => prev.filter((r) => r.id !== id));
@@ -187,12 +211,13 @@ export default function DriverDashboard() {
     } catch {
       toast({ title: "Error", description: "Could not approve request.", variant: "destructive" });
     } finally {
-      setProcessingIds((s) => { const n = new Set(s); n.delete(id); return n; });
+      setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; });
     }
   };
 
   const handleReject = async (id: number) => {
-    setProcessingIds((s) => new Set(s).add(id));
+    const key = `sched-${id}`;
+    setProcessingIds((s) => new Set(s).add(key));
     try {
       await customFetch(`/api/driver/requests/${id}/reject`, { method: "PUT" });
       setRequests((prev) => prev.filter((r) => r.id !== id));
@@ -200,7 +225,35 @@ export default function DriverDashboard() {
     } catch {
       toast({ title: "Error", description: "Could not reject request.", variant: "destructive" });
     } finally {
-      setProcessingIds((s) => { const n = new Set(s); n.delete(id); return n; });
+      setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; });
+    }
+  };
+
+  const handleCustomApprove = async (id: number) => {
+    const key = `custom-${id}`;
+    setProcessingIds((s) => new Set(s).add(key));
+    try {
+      await customFetch(`/api/driver/custom-requests/${id}/approve`, { method: "PUT" });
+      setCustomRequests((prev) => prev.filter((r) => r.id !== id));
+      toast({ title: "Custom trip approved", description: "Passenger has been confirmed." });
+    } catch {
+      toast({ title: "Error", description: "Could not approve custom trip.", variant: "destructive" });
+    } finally {
+      setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; });
+    }
+  };
+
+  const handleCustomReject = async (id: number) => {
+    const key = `custom-${id}`;
+    setProcessingIds((s) => new Set(s).add(key));
+    try {
+      await customFetch(`/api/driver/custom-requests/${id}/reject`, { method: "PUT" });
+      setCustomRequests((prev) => prev.filter((r) => r.id !== id));
+      toast({ title: "Custom trip rejected" });
+    } catch {
+      toast({ title: "Error", description: "Could not reject custom trip.", variant: "destructive" });
+    } finally {
+      setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; });
     }
   };
 
@@ -285,11 +338,11 @@ export default function DriverDashboard() {
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.offline;
   const occupancyPct = vehicle.capacity > 0 ? Math.round((vehicle.currentPassengers / vehicle.capacity) * 100) : 0;
 
-  // Build map center and bounds from driver + pickup pins
   const driverPos: [number, number] = [vehicle.currentLat, vehicle.currentLng];
   const pickupPins = requests
     .map((r) => ({ ...r, coords: getCoords(r.origin) }))
     .filter((r) => r.coords !== null) as (PendingRequest & { coords: [number, number] })[];
+  const totalPending = requests.length + customRequests.length;
 
   return (
     <div className="flex-1 bg-muted/20 p-4 md:p-6">
@@ -312,25 +365,25 @@ export default function DriverDashboard() {
           </Button>
         </div>
 
-        {/* Pending Requests */}
-        <Card className={requests.length > 0 ? "border-amber-300 shadow-amber-100 shadow-md" : ""}>
+        {/* Pending Requests — Scheduled */}
+        <Card className={totalPending > 0 ? "border-amber-300 shadow-amber-100 shadow-md" : ""}>
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
-              <Bell className={`h-4 w-4 ${requests.length > 0 ? "text-amber-500 animate-pulse" : "text-muted-foreground"}`} />
-              Pending Seat Requests
-              {requests.length > 0 && (
+              <Bell className={`h-4 w-4 ${totalPending > 0 ? "text-amber-500 animate-pulse" : "text-muted-foreground"}`} />
+              Pending Requests
+              {totalPending > 0 && (
                 <Badge className="ml-auto bg-amber-500 hover:bg-amber-500 text-white text-xs">
-                  {requests.length} new
+                  {totalPending} new
                 </Badge>
               )}
             </CardTitle>
-            <CardDescription>Approve or reject passenger booking requests</CardDescription>
+            <CardDescription>Approve or reject scheduled seat requests</CardDescription>
           </CardHeader>
           <CardContent>
             {requests.length === 0 ? (
-              <div className="text-center py-6 text-muted-foreground">
-                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No pending requests</p>
+              <div className="text-center py-4 text-muted-foreground">
+                <CheckCircle2 className="h-7 w-7 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No pending scheduled requests</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -341,40 +394,28 @@ export default function DriverDashboard() {
                         <div className="font-semibold text-sm">{r.passengerName}</div>
                         {r.passengerPhone && <div className="text-xs text-muted-foreground">{r.passengerPhone}</div>}
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {r.origin} → {r.destination}
+                          <MapPin className="h-3 w-3" />{r.origin} → {r.destination}
                         </div>
                         <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                           <CalendarClock className="h-3 w-3" />
-                          {format(new Date(r.departureTime), "HH:mm")} departure · {r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}
+                          {format(new Date(r.departureTime), "HH:mm")} · {r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}
                         </div>
                       </div>
                       <div className="text-right shrink-0">
                         <div className="font-bold text-sm flex items-center gap-0.5 justify-end text-primary">
                           <PhilippinePeso className="h-3 w-3" />{r.totalFare.toLocaleString()}
                         </div>
-                        <div className="text-[10px] text-muted-foreground">total fare</div>
                       </div>
                     </div>
                     <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
-                        disabled={processingIds.has(r.id)}
-                        onClick={() => handleApprove(r.id)}
-                      >
+                      <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        disabled={processingIds.has(`sched-${r.id}`)} onClick={() => handleApprove(r.id)}>
                         <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />
-                        {processingIds.has(r.id) ? "Processing…" : "Approve"}
+                        {processingIds.has(`sched-${r.id}`) ? "Processing…" : "Approve"}
                       </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
-                        disabled={processingIds.has(r.id)}
-                        onClick={() => handleReject(r.id)}
-                      >
-                        <ThumbsDown className="h-3.5 w-3.5 mr-1.5" />
-                        Reject
+                      <Button size="sm" variant="outline" className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
+                        disabled={processingIds.has(`sched-${r.id}`)} onClick={() => handleReject(r.id)}>
+                        <ThumbsDown className="h-3.5 w-3.5 mr-1.5" />Reject
                       </Button>
                     </div>
                   </div>
@@ -383,6 +424,60 @@ export default function DriverDashboard() {
             )}
           </CardContent>
         </Card>
+
+        {/* Pending Requests — Custom Trips */}
+        {customRequests.length > 0 && (
+          <Card className="border-purple-300 shadow-purple-100 shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <LocateFixed className="h-4 w-4 text-purple-500 animate-pulse" />
+                Custom Trip Requests
+                <Badge className="ml-auto bg-purple-500 hover:bg-purple-500 text-white text-xs">
+                  {customRequests.length} new
+                </Badge>
+              </CardTitle>
+              <CardDescription>Passengers who chose their own pickup &amp; dropoff</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {customRequests.map((r) => (
+                  <div key={r.id} className="flex flex-col gap-3 p-4 rounded-xl border-2 border-purple-200 bg-purple-50/50">
+                    <div>
+                      <div className="font-semibold text-sm">{r.passengerName}</div>
+                      {r.passengerPhone && <div className="text-xs text-muted-foreground">{r.passengerPhone}</div>}
+                      <div className="text-xs mt-1.5 space-y-1">
+                        <div className="flex items-start gap-1.5 text-muted-foreground">
+                          <LocateFixed className="h-3 w-3 text-green-600 mt-0.5 shrink-0" />
+                          <span><span className="font-medium text-foreground">Pickup:</span> {r.pickupLabel}</span>
+                        </div>
+                        <div className="flex items-start gap-1.5 text-muted-foreground">
+                          <MapPin className="h-3 w-3 text-red-500 mt-0.5 shrink-0" />
+                          <span><span className="font-medium text-foreground">Dropoff:</span> {r.dropoffLabel}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <CalendarClock className="h-3 w-3 shrink-0" />
+                          {new Date(r.requestedTime).toLocaleString("en-PH", { dateStyle: "short", timeStyle: "short" })} · {r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                      {r.notes && <div className="text-xs text-muted-foreground mt-1 italic">"{r.notes}"</div>}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        disabled={processingIds.has(`custom-${r.id}`)} onClick={() => handleCustomApprove(r.id)}>
+                        <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />
+                        {processingIds.has(`custom-${r.id}`) ? "Processing…" : "Approve"}
+                      </Button>
+                      <Button size="sm" variant="outline" className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
+                        disabled={processingIds.has(`custom-${r.id}`)} onClick={() => handleCustomReject(r.id)}>
+                        <ThumbsDown className="h-3.5 w-3.5 mr-1.5" />Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Map — driver location + passenger pickup pins */}
         <Card className="overflow-hidden">
@@ -419,14 +514,27 @@ export default function DriverDashboard() {
                     </div>
                   </Popup>
                 </Marker>
-                {/* Passenger pickup pins */}
+                {/* Scheduled pickup pins (from route origin lookup) */}
                 {pickupPins.map((r) => (
-                  <Marker key={r.id} position={r.coords} icon={createPassengerIcon()}>
+                  <Marker key={`sched-${r.id}`} position={r.coords} icon={createPassengerIcon()}>
                     <Popup>
                       <div className="text-sm p-1 space-y-1">
                         <div className="font-semibold">{r.passengerName}</div>
                         <div className="text-xs text-muted-foreground">Pickup: {r.origin}</div>
                         <div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""} · {format(new Date(r.departureTime), "HH:mm")}</div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+                {/* Custom trip pickup pins (exact GPS coordinates) */}
+                {customRequests.map((r) => (
+                  <Marker key={`custom-${r.id}`} position={[r.pickupLat, r.pickupLng]} icon={createPassengerIcon()}>
+                    <Popup>
+                      <div className="text-sm p-1 space-y-1">
+                        <div className="font-semibold">{r.passengerName}</div>
+                        <div className="text-xs text-muted-foreground">📍 {r.pickupLabel}</div>
+                        <div className="text-xs text-muted-foreground">→ {r.dropoffLabel}</div>
+                        <div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""} · Custom trip</div>
                       </div>
                     </Popup>
                   </Marker>

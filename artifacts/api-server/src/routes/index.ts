@@ -9,6 +9,7 @@ import mapRouter from "./map";
 import bookingsRouter from "./bookings";
 import statsRouter from "./stats";
 import driverRouter from "./driver";
+import customTripsRouter from "./custom-trips";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(mapRouter);
 router.use(bookingsRouter);
 router.use(statsRouter);
 router.use(driverRouter);
+router.use(customTripsRouter);
 
 export default router;

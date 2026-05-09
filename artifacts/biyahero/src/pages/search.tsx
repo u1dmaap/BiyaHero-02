@@ -60,13 +60,13 @@ export default function SearchPage() {
       <LocationPickerMap
         open={pickerOpen === "origin"}
         onClose={() => setPickerOpen(null)}
-        onConfirm={(name) => { setOrigin(name); setPickerOpen(null); }}
+        onConfirm={(result) => { setOrigin(result.name); setPickerOpen(null); }}
         title="Pick Origin on Map"
       />
       <LocationPickerMap
         open={pickerOpen === "destination"}
         onClose={() => setPickerOpen(null)}
-        onConfirm={(name) => { setDestination(name); setPickerOpen(null); }}
+        onConfirm={(result) => { setDestination(result.name); setPickerOpen(null); }}
         title="Pick Destination on Map"
       />
 
@@ -139,7 +139,7 @@ export default function SearchPage() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Types</SelectItem>
-                    {Object.values(VehicleType).map(t => (
+                    {Object.values(VehicleType).filter(t => t !== "fx" && t !== "ferry").map(t => (
                       <SelectItem key={t} value={t} className="capitalize">{t.replace('_', ' ')}</SelectItem>
                     ))}
                   </SelectContent>

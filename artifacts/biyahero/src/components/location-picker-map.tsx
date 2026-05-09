@@ -34,14 +34,21 @@ function InvalidateSize() {
   return null;
 }
 
+export interface PickedLocation {
+  name: string;
+  lat: number;
+  lng: number;
+}
+
 interface LocationPickerMapProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (placeName: string) => void;
+  onConfirm: (result: PickedLocation) => void;
   title: string;
+  initialCenter?: [number, number];
 }
 
-export function LocationPickerMap({ open, onClose, onConfirm, title }: LocationPickerMapProps) {
+export function LocationPickerMap({ open, onClose, onConfirm, title, initialCenter = [13.7565, 121.0583] }: LocationPickerMapProps) {
   const [picked, setPicked] = useState<[number, number] | null>(null);
   const [placeName, setPlaceName] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -79,8 +86,8 @@ export function LocationPickerMap({ open, onClose, onConfirm, title }: LocationP
   }, []);
 
   const handleConfirm = () => {
-    if (placeName) {
-      onConfirm(placeName);
+    if (placeName && picked) {
+      onConfirm({ name: placeName, lat: picked[0], lng: picked[1] });
       setPicked(null);
       setPlaceName(null);
     }
@@ -106,7 +113,7 @@ export function LocationPickerMap({ open, onClose, onConfirm, title }: LocationP
         <div style={{ height: 420, position: "relative" }}>
           {open && (
             <MapContainer
-              center={[14.5995, 120.9842]}
+              center={initialCenter}
               zoom={12}
               style={{ width: "100%", height: "100%" }}
               scrollWheelZoom={true}

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, and, inArray, sql } from "drizzle-orm";
-import { db, usersTable, vehiclesTable, bookingsTable, schedulesTable, routesTable } from "@workspace/db";
+import { db, usersTable, vehiclesTable, bookingsTable, schedulesTable, routesTable, customTripsTable } from "@workspace/db";
 import { requireAuth, type AuthRequest } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -249,6 +249,58 @@ router.put("/driver/passengers", requireAuth, async (req: AuthRequest, res): Pro
     currentPassengers: updated.currentPassengers,
     capacity: updated.capacity,
   });
+});
+
+router.get("/driver/custom-requests", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const ctx = await requireDriver(req, res);
+  if (!ctx) return;
+  const { vehicle } = ctx;
+
+  const requests = await db
+    .select()
+    .from(customTripsTable)
+    .where(and(eq(customTripsTable.vehicleId, vehicle.id), eq(customTripsTable.status, "pending")))
+    .orderBy(desc(customTripsTable.createdAt));
+
+  res.json(requests);
+});
+
+router.put("/driver/custom-requests/:id/approve", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const ctx = await requireDriver(req, res);
+  if (!ctx) return;
+  const { vehicle } = ctx;
+
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Bad request", message: "Invalid ID" }); return; }
+
+  const [trip] = await db
+    .select()
+    .from(customTripsTable)
+    .where(and(eq(customTripsTable.id, id), eq(customTripsTable.vehicleId, vehicle.id), eq(customTripsTable.status, "pending")));
+
+  if (!trip) { res.status(404).json({ error: "Not found", message: "Pending custom trip not found for your vehicle" }); return; }
+
+  const [updated] = await db.update(customTripsTable).set({ status: "confirmed" }).where(eq(customTripsTable.id, id)).returning();
+  res.json({ success: true, trip: updated });
+});
+
+router.put("/driver/custom-requests/:id/reject", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const ctx = await requireDriver(req, res);
+  if (!ctx) return;
+  const { vehicle } = ctx;
+
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Bad request", message: "Invalid ID" }); return; }
+
+  const [trip] = await db
+    .select()
+    .from(customTripsTable)
+    .where(and(eq(customTripsTable.id, id), eq(customTripsTable.vehicleId, vehicle.id), eq(customTripsTable.status, "pending")));
+
+  if (!trip) { res.status(404).json({ error: "Not found", message: "Pending custom trip not found for your vehicle" }); return; }
+
+  await db.update(customTripsTable).set({ status: "rejected" }).where(eq(customTripsTable.id, id));
+  res.json({ success: true });
 });
 
 export default router;
