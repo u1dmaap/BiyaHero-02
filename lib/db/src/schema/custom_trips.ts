@@ -16,6 +16,8 @@ export const customTripsTable = pgTable("custom_trips", {
   seatCount: integer("seat_count").notNull().default(1),
   status: text("status").notNull().default("pending"),
   notes: text("notes"),
+  rating: integer("rating"),
+  ratingComment: text("rating_comment"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
