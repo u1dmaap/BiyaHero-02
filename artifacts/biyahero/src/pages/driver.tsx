@@ -11,9 +11,8 @@ import L from "leaflet";
 import {
   Truck, Users, MapPin, RefreshCw, CheckCircle2, Clock,
   Navigation, Wifi, WifiOff, AlertCircle, PhilippinePeso,
-  Bell, ThumbsUp, ThumbsDown, CalendarClock, LocateFixed, Flag, X,
+  Bell, ThumbsUp, ThumbsDown, CalendarClock, LocateFixed, Flag, X, Navigation2,
 } from "lucide-react";
-import { format } from "date-fns";
 
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -23,29 +22,8 @@ type LeafletIconDefaultInternal = typeof L.Icon.Default.prototype & { _getIconUr
 delete (L.Icon.Default.prototype as LeafletIconDefaultInternal)._getIconUrl;
 L.Icon.Default.mergeOptions({ iconUrl: markerIcon, iconRetinaUrl: markerIcon2x, shadowUrl: markerShadow });
 
-const BATANGAS_COORDS: Record<string, [number, number]> = {
-  "Batangas City": [13.7565, 121.0583],
-  "Batangas Port": [13.7748, 121.0622],
-  "Lipa City":     [13.9411, 121.1631],
-  "Tanauan":       [14.0853, 121.0085],
-  "Nasugbu":       [14.0703, 120.6262],
-  "Lemery":        [13.8778, 120.9071],
-  "Balayan":       [13.9394, 120.7238],
-  "San Jose":      [13.8673, 121.0903],
-  "Rosario":       [13.8477, 121.1979],
-  "Bauan":         [13.7947, 121.0074],
-  "Tagaytay":      [14.1153, 120.9621],
-  "Calapan":       [13.4148, 121.1803],
-};
-
-function getCoords(place: string): [number, number] | null {
-  for (const [key, val] of Object.entries(BATANGAS_COORDS)) {
-    if (place.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(place.toLowerCase())) return val;
-  }
-  return null;
-}
-
 type DriverStatus = "offline" | "available" | "en_route" | "arrived";
+type TripStep = "en_route" | "arrived";
 
 interface Vehicle {
   id: number; type: string; plateNumber: string; operator: string; capacity: number;
@@ -55,11 +33,6 @@ interface RecentBooking {
   id: number; passengerName: string; seatCount: number; totalFare: number;
   status: string; paymentStatus: string; createdAt: string;
 }
-interface PendingRequest {
-  id: number; passengerName: string; passengerPhone: string | null; seatCount: number;
-  totalFare: number; status: string; paymentStatus: string; createdAt: string;
-  scheduleId: number; departureTime: string; origin: string; destination: string;
-}
 interface CustomTripRequest {
   id: number; passengerName: string; passengerPhone: string | null; seatCount: number;
   pickupLat: number; pickupLng: number; pickupLabel: string;
@@ -68,22 +41,27 @@ interface CustomTripRequest {
 }
 interface DashboardData { vehicle: Vehicle; recentBookings: RecentBooking[]; }
 
-const STATUS_CONFIG: Record<DriverStatus, { label: string; color: string; bg: string; description: string }> = {
-  offline:   { label: "Offline",   color: "text-slate-500",  bg: "bg-slate-100",  description: "Not accepting passengers" },
-  available: { label: "Available", color: "text-green-700",  bg: "bg-green-100",  description: "Ready for passengers" },
-  en_route:  { label: "En Route",  color: "text-blue-700",   bg: "bg-blue-100",   description: "Currently on a trip" },
-  arrived:   { label: "Arrived",   color: "text-amber-700",  bg: "bg-amber-100",  description: "At destination" },
+const STATUS_CONFIG: Record<"offline" | "available", { label: string; color: string; bg: string; description: string; icon: React.ReactNode }> = {
+  offline:   { label: "Offline",   color: "text-slate-500", bg: "bg-slate-100", description: "Not accepting passengers", icon: <WifiOff className="h-4 w-4 text-slate-400" /> },
+  available: { label: "Available", color: "text-green-700", bg: "bg-green-100", description: "Ready for passengers",    icon: <Wifi className="h-4 w-4 text-green-500" /> },
 };
 
-function createDriverIcon() {
-  return new L.DivIcon({ className: "", html: `<div style="width:20px;height:20px;border-radius:50%;background:#2563EB;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 4px 12px rgba(0,0,0,0.3);"></div>`, iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -14] });
+// ─── Map icons ─────────────────────────────────────────────────────────────────
+
+function mkPin(color: string, size = 32, square = false) {
+  const h = Math.round(size * 1.25);
+  const i = Math.round(size * 0.19);
+  const s = Math.round(size * 0.44);
+  const inner = square
+    ? `<div style="position:absolute;top:${i}px;left:${i}px;width:${s}px;height:${s}px;border-radius:3px;background:rgba(255,255,255,0.9);"></div>`
+    : `<div style="position:absolute;top:${i}px;left:${i}px;width:${s}px;height:${s}px;border-radius:50%;background:rgba(255,255,255,0.9);"></div>`;
+  return `<div style="position:relative;width:${size}px;height:${h}px;"><div style="width:${size}px;height:${size}px;border-radius:50% 50% 50% 0;background:${color};transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>${inner}</div>`;
 }
-function createPendingPassengerIcon() {
-  return new L.DivIcon({ className: "", html: `<div style="position:relative;width:28px;height:36px;"><div style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:#F59E0B;transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div><div style="position:absolute;top:5px;left:5px;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.9);"></div></div>`, iconSize: [28, 36], iconAnchor: [14, 36], popupAnchor: [0, -38] });
-}
-function createConfirmedPassengerIcon() {
-  return new L.DivIcon({ className: "", html: `<div style="position:relative;width:32px;height:40px;"><div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:#16A34A;transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 14px rgba(22,163,74,0.4);"></div><div style="position:absolute;top:6px;left:6px;width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,0.95);"></div></div>`, iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -42] });
-}
+
+function createDriverIcon() { return new L.DivIcon({ className: "", html: `<div style="width:20px;height:20px;border-radius:50%;background:#2563EB;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 4px 12px rgba(0,0,0,0.3);"></div>`, iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -14] }); }
+function createPickupPendingIcon() { return new L.DivIcon({ className: "", html: mkPin("#F59E0B", 28), iconSize: [28, 35], iconAnchor: [14, 35], popupAnchor: [0, -37] }); }
+function createPickupConfirmedIcon() { return new L.DivIcon({ className: "", html: mkPin("#16A34A", 32), iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -42] }); }
+function createDropoffIcon() { return new L.DivIcon({ className: "", html: mkPin("#EF4444", 28, true), iconSize: [28, 35], iconAnchor: [14, 35], popupAnchor: [0, -37] }); }
 
 function InvalidateSize() {
   const map = useMap();
@@ -95,7 +73,7 @@ function InvalidateSize() {
 
 function TripSummaryModal({ trip, onClose }: { trip: CustomTripRequest; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
         <div className="bg-green-600 px-6 py-5 text-white text-center relative">
           <button onClick={onClose} className="absolute top-3 right-3 text-green-200 hover:text-white transition-colors"><X className="h-5 w-5" /></button>
@@ -103,41 +81,16 @@ function TripSummaryModal({ trip, onClose }: { trip: CustomTripRequest; onClose:
           <h2 className="text-lg font-bold">Trip Finished!</h2>
           <p className="text-green-100 text-sm mt-0.5">Great job completing the trip</p>
         </div>
-        <div className="p-6 space-y-4">
-          <div className="space-y-3 text-sm divide-y divide-border">
-            <div className="flex justify-between items-start py-2 first:pt-0">
-              <span className="text-gray-500 shrink-0">Passenger</span>
-              <span className="font-semibold text-right">{trip.passengerName}</span>
-            </div>
-            {trip.passengerPhone && (
-              <div className="flex justify-between items-start py-2">
-                <span className="text-gray-500 shrink-0">Phone</span>
-                <span className="font-medium">{trip.passengerPhone}</span>
-              </div>
-            )}
-            <div className="flex justify-between items-start py-2">
-              <span className="text-gray-500 shrink-0 mt-0.5">Pickup</span>
-              <span className="font-medium text-right max-w-[200px]">{trip.pickupLabel}</span>
-            </div>
-            <div className="flex justify-between items-start py-2">
-              <span className="text-gray-500 shrink-0 mt-0.5">Dropoff</span>
-              <span className="font-medium text-right max-w-[200px]">{trip.dropoffLabel}</span>
-            </div>
-            <div className="flex justify-between py-2">
-              <span className="text-gray-500">Seats</span>
-              <span className="font-medium">{trip.seatCount} seat{trip.seatCount !== 1 ? "s" : ""}</span>
-            </div>
-            <div className="flex justify-between py-2">
-              <span className="text-gray-500">Date &amp; Time</span>
-              <span className="font-medium">{new Date(trip.requestedTime).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</span>
-            </div>
-            {trip.notes && (
-              <div className="flex justify-between items-start py-2">
-                <span className="text-gray-500 shrink-0">Notes</span>
-                <span className="text-gray-600 italic text-right max-w-[200px]">"{trip.notes}"</span>
-              </div>
-            )}
-          </div>
+        <div className="p-6 space-y-0 text-sm divide-y divide-border">
+          <div className="flex justify-between items-start py-3 first:pt-0"><span className="text-gray-500 shrink-0">Passenger</span><span className="font-semibold text-right">{trip.passengerName}</span></div>
+          {trip.passengerPhone && <div className="flex justify-between py-3"><span className="text-gray-500">Phone</span><span className="font-medium">{trip.passengerPhone}</span></div>}
+          <div className="flex justify-between items-start py-3"><span className="text-gray-500 shrink-0 mt-0.5">Pickup</span><span className="font-medium text-right max-w-[200px]">{trip.pickupLabel}</span></div>
+          <div className="flex justify-between items-start py-3"><span className="text-gray-500 shrink-0 mt-0.5">Dropoff</span><span className="font-medium text-right max-w-[200px]">{trip.dropoffLabel}</span></div>
+          <div className="flex justify-between py-3"><span className="text-gray-500">Seats</span><span className="font-medium">{trip.seatCount} seat{trip.seatCount !== 1 ? "s" : ""}</span></div>
+          <div className="flex justify-between py-3"><span className="text-gray-500">Date &amp; Time</span><span className="font-medium">{new Date(trip.requestedTime).toLocaleString("en-PH", { dateStyle: "medium", timeStyle: "short" })}</span></div>
+          {trip.notes && <div className="flex justify-between items-start py-3"><span className="text-gray-500 shrink-0">Notes</span><span className="text-gray-600 italic text-right max-w-[200px]">"{trip.notes}"</span></div>}
+        </div>
+        <div className="px-6 pb-6 pt-2">
           <Button className="w-full bg-green-600 hover:bg-green-700" onClick={onClose}>Done</Button>
         </div>
       </div>
@@ -145,16 +98,16 @@ function TripSummaryModal({ trip, onClose }: { trip: CustomTripRequest; onClose:
   );
 }
 
-// ─── Main dashboard ───────────────────────────────────────────────────────────
+// ─── Main dashboard ────────────────────────────────────────────────────────────
 
 export default function DriverDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
 
   const [data, setData] = useState<DashboardData | null>(null);
-  const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [customRequests, setCustomRequests] = useState<CustomTripRequest[]>([]);
   const [activeTrips, setActiveTrips] = useState<CustomTripRequest[]>([]);
+  const [tripSteps, setTripSteps] = useState<Record<number, TripStep>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshSpinning, setIsRefreshSpinning] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -168,13 +121,12 @@ export default function DriverDashboard() {
   const fetchDashboard = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [result, reqs, customReqs, active] = await Promise.all([
+      const [result, customReqs, active] = await Promise.all([
         customFetch<DashboardData>("/api/driver/dashboard"),
-        customFetch<PendingRequest[]>("/api/driver/requests"),
         customFetch<CustomTripRequest[]>("/api/driver/custom-requests"),
         customFetch<CustomTripRequest[]>("/api/driver/active-trips"),
       ]);
-      setData(result); setRequests(reqs); setCustomRequests(customReqs); setActiveTrips(active);
+      setData(result); setCustomRequests(customReqs); setActiveTrips(active);
     } catch {
       toast({ title: "Error", description: "Could not load dashboard.", variant: "destructive" });
     } finally { setIsLoading(false); }
@@ -182,12 +134,11 @@ export default function DriverDashboard() {
 
   const fetchRequests = useCallback(async () => {
     try {
-      const [reqs, customReqs, active] = await Promise.all([
-        customFetch<PendingRequest[]>("/api/driver/requests"),
+      const [customReqs, active] = await Promise.all([
         customFetch<CustomTripRequest[]>("/api/driver/custom-requests"),
         customFetch<CustomTripRequest[]>("/api/driver/active-trips"),
       ]);
-      setRequests(reqs); setCustomRequests(customReqs); setActiveTrips(active);
+      setCustomRequests(customReqs); setActiveTrips(active);
     } catch { /* silent */ }
   }, []);
 
@@ -197,47 +148,41 @@ export default function DriverDashboard() {
   const handleRefresh = () => { setIsRefreshSpinning(true); fetchDashboard(); setTimeout(() => setIsRefreshSpinning(false), 600); };
 
   const handleApprove = async (id: number) => {
-    const key = `sched-${id}`;
-    setProcessingIds((s) => new Set(s).add(key));
-    try {
-      await customFetch(`/api/driver/requests/${id}/approve`, { method: "PUT" });
-      setRequests((prev) => prev.filter((r) => r.id !== id));
-      toast({ title: "Request approved" }); fetchDashboard();
-    } catch { toast({ title: "Error", description: "Could not approve request.", variant: "destructive" }); }
-    finally { setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; }); }
-  };
-
-  const handleReject = async (id: number) => {
-    const key = `sched-${id}`;
-    setProcessingIds((s) => new Set(s).add(key));
-    try {
-      await customFetch(`/api/driver/requests/${id}/reject`, { method: "PUT" });
-      setRequests((prev) => prev.filter((r) => r.id !== id));
-      toast({ title: "Request rejected" });
-    } catch { toast({ title: "Error", description: "Could not reject request.", variant: "destructive" }); }
-    finally { setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; }); }
-  };
-
-  const handleCustomApprove = async (id: number) => {
     const key = `custom-${id}`;
     setProcessingIds((s) => new Set(s).add(key));
     try {
       await customFetch(`/api/driver/custom-requests/${id}/approve`, { method: "PUT" });
       setCustomRequests((prev) => prev.filter((r) => r.id !== id));
-      toast({ title: "Custom trip approved" }); fetchRequests();
-    } catch { toast({ title: "Error", description: "Could not approve custom trip.", variant: "destructive" }); }
+      toast({ title: "Trip request approved" }); fetchRequests();
+    } catch { toast({ title: "Error", description: "Could not approve request.", variant: "destructive" }); }
     finally { setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; }); }
   };
 
-  const handleCustomReject = async (id: number) => {
+  const handleReject = async (id: number) => {
     const key = `custom-${id}`;
     setProcessingIds((s) => new Set(s).add(key));
     try {
       await customFetch(`/api/driver/custom-requests/${id}/reject`, { method: "PUT" });
       setCustomRequests((prev) => prev.filter((r) => r.id !== id));
-      toast({ title: "Custom trip rejected" });
-    } catch { toast({ title: "Error", description: "Could not reject custom trip.", variant: "destructive" }); }
+      toast({ title: "Trip request rejected" });
+    } catch { toast({ title: "Error", description: "Could not reject request.", variant: "destructive" }); }
     finally { setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; }); }
+  };
+
+  const handleStepEnRoute = async (trip: CustomTripRequest) => {
+    setTripSteps((prev) => ({ ...prev, [trip.id]: "en_route" }));
+    try {
+      await customFetch("/api/driver/status", { method: "PUT", body: JSON.stringify({ driverStatus: "en_route" }) });
+      setData((prev) => prev ? { ...prev, vehicle: { ...prev.vehicle, driverStatus: "en_route" } } : prev);
+    } catch { /* silent — step is already set */ }
+  };
+
+  const handleStepArrived = async (trip: CustomTripRequest) => {
+    setTripSteps((prev) => ({ ...prev, [trip.id]: "arrived" }));
+    try {
+      await customFetch("/api/driver/status", { method: "PUT", body: JSON.stringify({ driverStatus: "arrived" }) });
+      setData((prev) => prev ? { ...prev, vehicle: { ...prev.vehicle, driverStatus: "arrived" } } : prev);
+    } catch { /* silent */ }
   };
 
   const handleCompleteTrip = async (trip: CustomTripRequest) => {
@@ -246,13 +191,17 @@ export default function DriverDashboard() {
     try {
       await customFetch(`/api/driver/custom-requests/${trip.id}/complete`, { method: "PUT" });
       setActiveTrips((prev) => prev.filter((r) => r.id !== trip.id));
+      setTripSteps((prev) => { const n = { ...prev }; delete n[trip.id]; return n; });
       setCompletedTrip(trip);
+      // Reset vehicle status back to available
+      await customFetch("/api/driver/status", { method: "PUT", body: JSON.stringify({ driverStatus: "available" }) }).catch(() => {});
+      setData((prev) => prev ? { ...prev, vehicle: { ...prev.vehicle, driverStatus: "available" } } : prev);
       fetchDashboard();
     } catch { toast({ title: "Error", description: "Could not complete trip.", variant: "destructive" }); }
     finally { setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; }); }
   };
 
-  const updateStatus = async (driverStatus: DriverStatus) => {
+  const updateStatus = async (driverStatus: "offline" | "available") => {
     if (!data) return;
     setIsUpdatingStatus(true);
     try {
@@ -304,11 +253,11 @@ export default function DriverDashboard() {
 
   const { vehicle, recentBookings } = data;
   const status = vehicle.driverStatus as DriverStatus;
-  const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.offline;
+  const isSimpleStatus = status === "offline" || status === "available";
+  const statusCfg = isSimpleStatus ? STATUS_CONFIG[status] : STATUS_CONFIG.available;
   const occupancyPct = vehicle.capacity > 0 ? Math.round((vehicle.currentPassengers / vehicle.capacity) * 100) : 0;
   const driverPos: [number, number] = [vehicle.currentLat, vehicle.currentLng];
-  const pickupPins = requests.map((r) => ({ ...r, coords: getCoords(r.origin) })).filter((r) => r.coords !== null) as (PendingRequest & { coords: [number, number] })[];
-  const totalPending = requests.length + customRequests.length;
+  const totalPending = customRequests.length;
 
   return (
     <div className="flex-1 bg-muted/20 p-4 md:p-6">
@@ -317,7 +266,6 @@ export default function DriverDashboard() {
         .spin-once { animation: spin-once 0.6s ease-in-out; }
       `}</style>
 
-      {/* Trip completion summary */}
       {completedTrip && <TripSummaryModal trip={completedTrip} onClose={() => setCompletedTrip(null)} />}
 
       <div className="max-w-4xl mx-auto space-y-6">
@@ -334,7 +282,7 @@ export default function DriverDashboard() {
           </Button>
         </div>
 
-        {/* Active trips — confirmed passengers */}
+        {/* Active Trips */}
         {activeTrips.length > 0 && (
           <Card className="border-green-300 shadow-green-100 shadow-md">
             <CardHeader className="pb-3">
@@ -343,12 +291,86 @@ export default function DriverDashboard() {
                 Active Trips
                 <Badge className="ml-auto bg-green-600 hover:bg-green-600 text-white text-xs">{activeTrips.length} active</Badge>
               </CardTitle>
-              <CardDescription>Confirmed passengers — mark as finished when done</CardDescription>
+              <CardDescription>Follow the steps to complete each trip</CardDescription>
             </CardHeader>
             <CardContent>
+              <div className="space-y-4">
+                {activeTrips.map((r) => {
+                  const step = tripSteps[r.id];
+                  return (
+                    <div key={r.id} className="flex flex-col gap-3 p-4 rounded-xl border-2 border-green-200 bg-green-50/50">
+                      <div>
+                        <div className="font-semibold text-sm">{r.passengerName}</div>
+                        {r.passengerPhone && <div className="text-xs text-muted-foreground">{r.passengerPhone}</div>}
+                        <div className="text-xs mt-1.5 space-y-1">
+                          <div className="flex items-start gap-1.5 text-muted-foreground"><LocateFixed className="h-3 w-3 text-green-600 mt-0.5 shrink-0" /><span><span className="font-medium text-foreground">Pickup:</span> {r.pickupLabel}</span></div>
+                          <div className="flex items-start gap-1.5 text-muted-foreground"><MapPin className="h-3 w-3 text-red-500 mt-0.5 shrink-0" /><span><span className="font-medium text-foreground">Dropoff:</span> {r.dropoffLabel}</span></div>
+                          <div className="flex items-center gap-1.5 text-muted-foreground"><CalendarClock className="h-3 w-3 shrink-0" />{new Date(r.requestedTime).toLocaleString("en-PH", { dateStyle: "short", timeStyle: "short" })} · {r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}</div>
+                        </div>
+                        {r.notes && <div className="text-xs text-muted-foreground mt-1 italic">"{r.notes}"</div>}
+                      </div>
+
+                      {/* Step indicators */}
+                      <div className="flex gap-1.5 text-[10px] font-semibold">
+                        <div className={`flex items-center gap-1 px-2 py-1 rounded-full ${step ? "bg-green-200 text-green-800" : "bg-gray-100 text-gray-500"}`}>
+                          <Navigation2 className="h-2.5 w-2.5" />En Route
+                        </div>
+                        <span className="text-gray-300 self-center">›</span>
+                        <div className={`flex items-center gap-1 px-2 py-1 rounded-full ${step === "arrived" ? "bg-green-200 text-green-800" : "bg-gray-100 text-gray-500"}`}>
+                          <LocateFixed className="h-2.5 w-2.5" />Arrived
+                        </div>
+                        <span className="text-gray-300 self-center">›</span>
+                        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-100 text-gray-500">
+                          <Flag className="h-2.5 w-2.5" />Done
+                        </div>
+                      </div>
+
+                      {/* Action button — changes per step */}
+                      {!step && (
+                        <Button size="sm" className="w-full bg-blue-600 hover:bg-blue-700 text-white" onClick={() => handleStepEnRoute(r)}>
+                          <Navigation2 className="h-3.5 w-3.5 mr-1.5" />Mark as En Route
+                        </Button>
+                      )}
+                      {step === "en_route" && (
+                        <Button size="sm" className="w-full bg-amber-600 hover:bg-amber-700 text-white" onClick={() => handleStepArrived(r)}>
+                          <LocateFixed className="h-3.5 w-3.5 mr-1.5" />Mark as Arrived
+                        </Button>
+                      )}
+                      {step === "arrived" && (
+                        <Button size="sm" className="w-full bg-green-700 hover:bg-green-800 text-white"
+                          disabled={processingIds.has(`complete-${r.id}`)} onClick={() => handleCompleteTrip(r)}>
+                          <Flag className="h-3.5 w-3.5 mr-1.5" />
+                          {processingIds.has(`complete-${r.id}`) ? "Marking complete…" : "Mark Trip as Finished"}
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Trip Requests */}
+        <Card className={totalPending > 0 ? "border-amber-300 shadow-amber-100 shadow-md" : ""}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Bell className={`h-4 w-4 ${totalPending > 0 ? "text-amber-500 animate-pulse" : "text-muted-foreground"}`} />
+              Trip Requests
+              {totalPending > 0 && <Badge className="ml-auto bg-amber-500 hover:bg-amber-500 text-white text-xs">{totalPending} new</Badge>}
+            </CardTitle>
+            <CardDescription>Passengers requesting a custom pickup &amp; dropoff</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {customRequests.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No pending trip requests</p>
+              </div>
+            ) : (
               <div className="space-y-3">
-                {activeTrips.map((r) => (
-                  <div key={r.id} className="flex flex-col gap-3 p-4 rounded-xl border-2 border-green-200 bg-green-50/50">
+                {customRequests.map((r) => (
+                  <div key={r.id} className="flex flex-col gap-3 p-4 rounded-xl border-2 border-amber-200 bg-amber-50/50">
                     <div>
                       <div className="font-semibold text-sm">{r.passengerName}</div>
                       {r.passengerPhone && <div className="text-xs text-muted-foreground">{r.passengerPhone}</div>}
@@ -359,49 +381,11 @@ export default function DriverDashboard() {
                       </div>
                       {r.notes && <div className="text-xs text-muted-foreground mt-1 italic">"{r.notes}"</div>}
                     </div>
-                    <Button size="sm" className="w-full bg-green-700 hover:bg-green-800 text-white"
-                      disabled={processingIds.has(`complete-${r.id}`)} onClick={() => handleCompleteTrip(r)}>
-                      <Flag className="h-3.5 w-3.5 mr-1.5" />
-                      {processingIds.has(`complete-${r.id}`) ? "Marking complete…" : "Mark Trip as Finished"}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Pending Requests — Scheduled */}
-        <Card className={totalPending > 0 ? "border-amber-300 shadow-amber-100 shadow-md" : ""}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Bell className={`h-4 w-4 ${totalPending > 0 ? "text-amber-500 animate-pulse" : "text-muted-foreground"}`} />
-              Pending Requests
-              {totalPending > 0 && <Badge className="ml-auto bg-amber-500 hover:bg-amber-500 text-white text-xs">{totalPending} new</Badge>}
-            </CardTitle>
-            <CardDescription>Approve or reject scheduled seat requests</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {requests.length === 0 ? (
-              <div className="text-center py-4 text-muted-foreground"><CheckCircle2 className="h-7 w-7 mx-auto mb-2 opacity-30" /><p className="text-sm">No pending scheduled requests</p></div>
-            ) : (
-              <div className="space-y-3">
-                {requests.map((r) => (
-                  <div key={r.id} className="flex flex-col gap-3 p-4 rounded-xl border-2 border-amber-200 bg-amber-50/50">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="font-semibold text-sm">{r.passengerName}</div>
-                        {r.passengerPhone && <div className="text-xs text-muted-foreground">{r.passengerPhone}</div>}
-                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1"><MapPin className="h-3 w-3" />{r.origin} → {r.destination}</div>
-                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><CalendarClock className="h-3 w-3" />{format(new Date(r.departureTime), "HH:mm")} · {r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}</div>
-                      </div>
-                      <div className="text-right shrink-0"><div className="font-bold text-sm flex items-center gap-0.5 justify-end text-primary"><PhilippinePeso className="h-3 w-3" />{r.totalFare.toLocaleString()}</div></div>
-                    </div>
                     <div className="flex gap-2">
-                      <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white" disabled={processingIds.has(`sched-${r.id}`)} onClick={() => handleApprove(r.id)}>
-                        <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />{processingIds.has(`sched-${r.id}`) ? "Processing…" : "Approve"}
+                      <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white" disabled={processingIds.has(`custom-${r.id}`)} onClick={() => handleApprove(r.id)}>
+                        <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />{processingIds.has(`custom-${r.id}`) ? "Processing…" : "Approve"}
                       </Button>
-                      <Button size="sm" variant="outline" className="flex-1 border-red-300 text-red-600 hover:bg-red-50" disabled={processingIds.has(`sched-${r.id}`)} onClick={() => handleReject(r.id)}>
+                      <Button size="sm" variant="outline" className="flex-1 border-red-300 text-red-600 hover:bg-red-50" disabled={processingIds.has(`custom-${r.id}`)} onClick={() => handleReject(r.id)}>
                         <ThumbsDown className="h-3.5 w-3.5 mr-1.5" />Reject
                       </Button>
                     </div>
@@ -412,82 +396,49 @@ export default function DriverDashboard() {
           </CardContent>
         </Card>
 
-        {/* Pending Requests — Custom Trips */}
-        {customRequests.length > 0 && (
-          <Card className="border-purple-300 shadow-purple-100 shadow-md">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">
-                <LocateFixed className="h-4 w-4 text-purple-500 animate-pulse" />
-                Custom Trip Requests
-                <Badge className="ml-auto bg-purple-500 hover:bg-purple-500 text-white text-xs">{customRequests.length} new</Badge>
-              </CardTitle>
-              <CardDescription>Passengers who chose their own pickup &amp; dropoff</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {customRequests.map((r) => (
-                  <div key={r.id} className="flex flex-col gap-3 p-4 rounded-xl border-2 border-purple-200 bg-purple-50/50">
-                    <div>
-                      <div className="font-semibold text-sm">{r.passengerName}</div>
-                      {r.passengerPhone && <div className="text-xs text-muted-foreground">{r.passengerPhone}</div>}
-                      <div className="text-xs mt-1.5 space-y-1">
-                        <div className="flex items-start gap-1.5 text-muted-foreground"><LocateFixed className="h-3 w-3 text-green-600 mt-0.5 shrink-0" /><span><span className="font-medium text-foreground">Pickup:</span> {r.pickupLabel}</span></div>
-                        <div className="flex items-start gap-1.5 text-muted-foreground"><MapPin className="h-3 w-3 text-red-500 mt-0.5 shrink-0" /><span><span className="font-medium text-foreground">Dropoff:</span> {r.dropoffLabel}</span></div>
-                        <div className="flex items-center gap-1.5 text-muted-foreground"><CalendarClock className="h-3 w-3 shrink-0" />{new Date(r.requestedTime).toLocaleString("en-PH", { dateStyle: "short", timeStyle: "short" })} · {r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}</div>
-                      </div>
-                      {r.notes && <div className="text-xs text-muted-foreground mt-1 italic">"{r.notes}"</div>}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700 text-white" disabled={processingIds.has(`custom-${r.id}`)} onClick={() => handleCustomApprove(r.id)}>
-                        <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />{processingIds.has(`custom-${r.id}`) ? "Processing…" : "Approve"}
-                      </Button>
-                      <Button size="sm" variant="outline" className="flex-1 border-red-300 text-red-600 hover:bg-red-50" disabled={processingIds.has(`custom-${r.id}`)} onClick={() => handleCustomReject(r.id)}>
-                        <ThumbsDown className="h-3.5 w-3.5 mr-1.5" />Reject
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Map */}
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2"><Navigation className="h-4 w-4 text-primary" />Live Map</CardTitle>
-            <CardDescription>Your position (blue) · Pending passengers (orange) · Confirmed passengers (green)</CardDescription>
+            <CardDescription>
+              <span className="inline-flex items-center gap-1.5 mr-3"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />Your location</span>
+              <span className="inline-flex items-center gap-1.5 mr-3"><span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block" />Pickup (pending)</span>
+              <span className="inline-flex items-center gap-1.5 mr-3"><span className="w-2.5 h-2.5 rounded-full bg-green-600 inline-block" />Pickup (confirmed)</span>
+              <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block" />Dropoff</span>
+            </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
-            <div style={{ height: 320, position: "relative" }}>
+            <div style={{ height: 340, position: "relative" }}>
               <MapContainer center={driverPos} zoom={13} style={{ width: "100%", height: "100%" }} scrollWheelZoom={false} zoomControl={true}>
                 <InvalidateSize />
                 <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors' url={tileUrl} maxZoom={19} />
                 <Marker position={driverPos} icon={createDriverIcon()}>
-                  <Popup><div className="text-sm font-semibold text-blue-700 p-1">Your location<br /><span className="text-xs text-muted-foreground font-normal">{vehicle.plateNumber}</span></div></Popup>
+                  <Popup><div className="text-sm p-1 font-semibold text-blue-700">Your location<br /><span className="text-xs text-muted-foreground font-normal">{vehicle.plateNumber}</span></div></Popup>
                 </Marker>
-                {pickupPins.map((r) => (
-                  <Marker key={`sched-${r.id}`} position={r.coords} icon={createPendingPassengerIcon()}>
-                    <Popup><div className="text-sm p-1 space-y-1"><div className="font-semibold">{r.passengerName}</div><div className="text-xs text-muted-foreground">Pickup: {r.origin}</div><div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""} · {format(new Date(r.departureTime), "HH:mm")}</div><Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">Pending</Badge></div></Popup>
+                {customRequests.map((r) => (
+                  <Marker key={`pickup-pending-${r.id}`} position={[r.pickupLat, r.pickupLng]} icon={createPickupPendingIcon()}>
+                    <Popup><div className="text-sm p-1 space-y-1"><div className="font-semibold">{r.passengerName}</div><div className="text-xs text-muted-foreground">📍 {r.pickupLabel}</div><Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">Pending Pickup</Badge></div></Popup>
                   </Marker>
                 ))}
                 {customRequests.map((r) => (
-                  <Marker key={`custom-pending-${r.id}`} position={[r.pickupLat, r.pickupLng]} icon={createPendingPassengerIcon()}>
-                    <Popup><div className="text-sm p-1 space-y-1"><div className="font-semibold">{r.passengerName}</div><div className="text-xs text-muted-foreground">📍 {r.pickupLabel}</div><div className="text-xs text-muted-foreground">→ {r.dropoffLabel}</div><Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">Pending</Badge></div></Popup>
+                  <Marker key={`dropoff-pending-${r.id}`} position={[r.dropoffLat, r.dropoffLng]} icon={createDropoffIcon()}>
+                    <Popup><div className="text-sm p-1 space-y-1"><div className="font-semibold text-red-600">Dropoff</div><div className="text-xs text-muted-foreground">{r.passengerName}</div><div className="text-xs text-muted-foreground">{r.dropoffLabel}</div><Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">Pending</Badge></div></Popup>
                   </Marker>
                 ))}
                 {activeTrips.map((r) => (
-                  <Marker key={`active-${r.id}`} position={[r.pickupLat, r.pickupLng]} icon={createConfirmedPassengerIcon()}>
-                    <Popup><div className="text-sm p-1 space-y-1"><div className="font-semibold">{r.passengerName}</div><div className="text-xs text-muted-foreground">📍 {r.pickupLabel}</div><div className="text-xs text-muted-foreground">→ {r.dropoffLabel}</div><div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}</div><Badge className="bg-green-100 text-green-800 border-green-200 text-[10px]">Confirmed</Badge></div></Popup>
+                  <Marker key={`pickup-active-${r.id}`} position={[r.pickupLat, r.pickupLng]} icon={createPickupConfirmedIcon()}>
+                    <Popup><div className="text-sm p-1 space-y-1"><div className="font-semibold">{r.passengerName}</div><div className="text-xs text-muted-foreground">📍 {r.pickupLabel}</div><div className="text-xs text-muted-foreground">→ {r.dropoffLabel}</div><Badge className="bg-green-100 text-green-800 border-green-200 text-[10px]">Confirmed Pickup</Badge></div></Popup>
+                  </Marker>
+                ))}
+                {activeTrips.map((r) => (
+                  <Marker key={`dropoff-active-${r.id}`} position={[r.dropoffLat, r.dropoffLng]} icon={createDropoffIcon()}>
+                    <Popup><div className="text-sm p-1 space-y-1"><div className="font-semibold text-red-600">Dropoff</div><div className="text-xs text-muted-foreground">{r.passengerName}</div><div className="text-xs text-muted-foreground">{r.dropoffLabel}</div><Badge className="bg-green-100 text-green-800 border-green-200 text-[10px]">Confirmed</Badge></div></Popup>
                   </Marker>
                 ))}
               </MapContainer>
             </div>
-            <div className="px-4 py-2 border-t text-xs text-muted-foreground flex items-center gap-4 flex-wrap">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />Your location</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />Pending pickup</span>
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-green-600 inline-block" />Confirmed passenger</span>
-              <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs px-2" onClick={refreshLocation} disabled={isRefreshingLocation}>
+            <div className="px-4 py-2 border-t">
+              <Button variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={refreshLocation} disabled={isRefreshingLocation}>
                 <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshingLocation ? "spin-once" : ""}`} key={isRefreshingLocation ? "spin" : "still"} />
                 Update my location
               </Button>
@@ -511,21 +462,36 @@ export default function DriverDashboard() {
 
           <Card>
             <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center gap-2">{status === "offline" ? <WifiOff className="h-4 w-4 text-slate-500" /> : <Wifi className="h-4 w-4 text-green-500" />}Current Status</CardTitle>
-              <CardDescription className={statusCfg.color}>{statusCfg.description}</CardDescription>
+              <CardTitle className="text-base flex items-center gap-2">
+                {isSimpleStatus ? statusCfg.icon : <Navigation2 className="h-4 w-4 text-blue-500" />}
+                Status
+              </CardTitle>
+              <CardDescription>
+                {status === "en_route" ? <span className="text-blue-600 font-medium">Currently on a trip</span>
+                  : status === "arrived" ? <span className="text-amber-600 font-medium">At destination</span>
+                  : isSimpleStatus ? <span className={statusCfg.color}>{statusCfg.description}</span>
+                  : null}
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              {(["offline", "available", "en_route", "arrived"] as DriverStatus[]).map((s) => {
+              {(["offline", "available"] as const).map((s) => {
                 const cfg = STATUS_CONFIG[s];
+                const isActive = status === s;
                 return (
-                  <button key={s} onClick={() => updateStatus(s)} disabled={isUpdatingStatus || status === s}
-                    className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${status === s ? `border-primary ${cfg.bg} ${cfg.color} font-semibold` : "border-border hover:border-primary/30 hover:bg-muted/50"}`}>
-                    <div className={`w-2.5 h-2.5 rounded-full ${status === s ? "bg-current" : "bg-muted-foreground/30"}`} />
+                  <button key={s} onClick={() => updateStatus(s)} disabled={isUpdatingStatus || isActive}
+                    className={`w-full flex items-center gap-3 p-3 rounded-lg border-2 transition-all text-left ${isActive ? `border-primary ${cfg.bg} ${cfg.color} font-semibold` : "border-border hover:border-primary/30 hover:bg-muted/50"}`}>
+                    <div className={`w-2.5 h-2.5 rounded-full ${isActive ? "bg-current" : "bg-muted-foreground/30"}`} />
                     <span className="text-sm">{cfg.label}</span>
-                    {status === s && <CheckCircle2 className="h-4 w-4 ml-auto" />}
+                    {isActive && <CheckCircle2 className="h-4 w-4 ml-auto" />}
                   </button>
                 );
               })}
+              {(status === "en_route" || status === "arrived") && (
+                <div className={`mt-1 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium ${status === "en_route" ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}>
+                  {status === "en_route" ? <Navigation2 className="h-3.5 w-3.5" /> : <LocateFixed className="h-3.5 w-3.5" />}
+                  {status === "en_route" ? "En route to passenger" : "Arrived at destination"}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -555,7 +521,7 @@ export default function DriverDashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2"><Clock className="h-4 w-4 text-primary" />Recent Bookings</CardTitle>
-            <CardDescription>Last 10 confirmed bookings for your vehicle</CardDescription>
+            <CardDescription>Last completed trips for your vehicle</CardDescription>
           </CardHeader>
           <CardContent>
             {recentBookings.length === 0 ? (
