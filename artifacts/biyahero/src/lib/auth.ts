@@ -1,6 +1,6 @@
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 
-const TOKEN_KEY = "biyahero_token";
+const TOKEN_KEY = "pasaherogo_token";
 
 export function getAuthToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);

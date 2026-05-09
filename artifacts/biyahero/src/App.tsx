@@ -1,5 +1,5 @@
-import React from "react";
-import { Switch, Route, Router as WouterRouter } from "wouter";
+import React, { useEffect } from "react";
+import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -8,7 +8,6 @@ import { AuthProvider, AuthGuard, DriverGuard } from "@/hooks/use-auth";
 import { Layout } from "@/components/layout";
 import { initAuth } from "@/lib/auth";
 
-import Home from "@/pages/home";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import MapPage from "@/pages/map";
@@ -29,6 +28,12 @@ const queryClient = new QueryClient({
   },
 });
 
+function RedirectToMap() {
+  const [, setLocation] = useLocation();
+  useEffect(() => { setLocation("/map"); }, [setLocation]);
+  return null;
+}
+
 function Router() {
   return (
     <Layout>
@@ -37,7 +42,7 @@ function Router() {
         <Route path="/register" component={Register} />
 
         <Route path="/">
-          {() => <AuthGuard><Home /></AuthGuard>}
+          {() => <AuthGuard><RedirectToMap /></AuthGuard>}
         </Route>
         <Route path="/map">
           {() => <AuthGuard><MapPage /></AuthGuard>}

@@ -33,7 +33,7 @@ export default function Register() {
     mutation: {
       onSuccess: (data) => {
         setAuthToken(data.token);
-        toast({ title: "Account created!", description: "Welcome to biyaHERO." });
+        toast({ title: "Account created!", description: "Welcome to PasaHero Go." });
         if (data.user.role === "driver") {
           setLocation("/driver");
         } else {
@@ -94,7 +94,7 @@ export default function Register() {
             </div>
           </div>
           <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-          <CardDescription>Join biyaHERO to book and track rides</CardDescription>
+          <CardDescription>Join PasaHero Go to track rides</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 gap-2 mb-6">

@@ -62,7 +62,7 @@ export function LocationPickerMap({ open, onClose, onConfirm, title, initialCent
     try {
       const res = await fetch(
         `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&accept-language=en`,
-        { headers: { "User-Agent": "biyaHERO/1.0" } }
+        { headers: { "User-Agent": "PasaHeroGo/1.0" } }
       );
       const data = await res.json();
       const addr = data.address || {};
