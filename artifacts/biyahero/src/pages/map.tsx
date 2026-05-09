@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import L from "leaflet";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { VehicleBookingSheet } from "@/components/vehicle-booking-sheet";
 
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -329,6 +330,7 @@ function CommuterMapView() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null);
   const [isRefreshSpinning, setIsRefreshSpinning] = useState(false);
+  const [bookingVehicle, setBookingVehicle] = useState<VehicleForBooking | null>(null);
 
   const { data: vehicles, isLoading, refetch } = useGetMapVehicles({ query: { queryKey: ["map-vehicles"], refetchInterval: 30000 } } as Parameters<typeof useGetMapVehicles>[0]);
 
@@ -397,6 +399,13 @@ function CommuterMapView() {
                       </div>
                     )}
                   </div>
+                  <button
+                    onClick={() => setBookingVehicle({ id: vehicle.id, type: vehicle.type, plateNumber: vehicle.plateNumber, operator: vehicle.operator, routeName: vehicle.routeName, routeOrigin: vehicle.routeOrigin, routeDestination: vehicle.routeDestination, color })}
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg px-3 py-2 transition-colors"
+                    style={{ backgroundColor: color }}
+                  >
+                    <MapPin className="h-3.5 w-3.5" /> Book this vehicle
+                  </button>
                 </div>
               </Popup>
             </Marker>
@@ -436,6 +445,8 @@ function CommuterMapView() {
           <div className="flex justify-between items-center text-sm"><span className="text-gray-500 text-xs">Showing</span><span className="font-bold text-primary">{filteredVehicles.length} vehicles</span></div>
         </div>
       </div>
+
+      <VehicleBookingSheet vehicle={bookingVehicle} onClose={() => setBookingVehicle(null)} />
     </div>
   );
 }
