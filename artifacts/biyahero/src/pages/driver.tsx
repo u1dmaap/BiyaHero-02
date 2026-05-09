@@ -11,7 +11,7 @@ import L from "leaflet";
 import {
   Truck, Users, MapPin, RefreshCw, CheckCircle2, Clock,
   Navigation, Wifi, WifiOff, AlertCircle, PhilippinePeso,
-  Bell, ThumbsUp, ThumbsDown, CalendarClock, LocateFixed,
+  Bell, ThumbsUp, ThumbsDown, CalendarClock, LocateFixed, Flag,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -126,7 +126,7 @@ function createDriverIcon() {
   });
 }
 
-function createPassengerIcon() {
+function createPendingPassengerIcon() {
   return new L.DivIcon({
     className: "",
     html: `<div style="position:relative;width:28px;height:36px;">
@@ -136,6 +136,20 @@ function createPassengerIcon() {
     iconSize: [28, 36],
     iconAnchor: [14, 36],
     popupAnchor: [0, -38],
+  });
+}
+
+function createConfirmedPassengerIcon() {
+  return new L.DivIcon({
+    className: "",
+    html: `<div style="position:relative;width:32px;height:40px;">
+      <div style="width:32px;height:32px;border-radius:50% 50% 50% 0;background:#16A34A;transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 14px rgba(22,163,74,0.4);"></div>
+      <div style="position:absolute;top:6px;left:6px;width:16px;height:16px;border-radius:50%;background:rgba(255,255,255,0.95);"></div>
+      <div style="position:absolute;top:0px;right:-4px;width:12px;height:12px;background:#16A34A;border-radius:50%;border:2px solid white;"></div>
+    </div>`,
+    iconSize: [32, 40],
+    iconAnchor: [16, 40],
+    popupAnchor: [0, -42],
   });
 }
 
@@ -156,7 +170,9 @@ export default function DriverDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [customRequests, setCustomRequests] = useState<CustomTripRequest[]>([]);
+  const [activeTrips, setActiveTrips] = useState<CustomTripRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshSpinning, setIsRefreshSpinning] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isUpdatingPassengers, setIsUpdatingPassengers] = useState(false);
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
@@ -167,14 +183,16 @@ export default function DriverDashboard() {
   const fetchDashboard = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [result, reqs, customReqs] = await Promise.all([
+      const [result, reqs, customReqs, active] = await Promise.all([
         customFetch<DashboardData>("/api/driver/dashboard"),
         customFetch<PendingRequest[]>("/api/driver/requests"),
         customFetch<CustomTripRequest[]>("/api/driver/custom-requests"),
+        customFetch<CustomTripRequest[]>("/api/driver/active-trips"),
       ]);
       setData(result);
       setRequests(reqs);
       setCustomRequests(customReqs);
+      setActiveTrips(active);
     } catch {
       toast({ title: "Error", description: "Could not load dashboard.", variant: "destructive" });
     } finally {
@@ -184,12 +202,14 @@ export default function DriverDashboard() {
 
   const fetchRequests = useCallback(async () => {
     try {
-      const [reqs, customReqs] = await Promise.all([
+      const [reqs, customReqs, active] = await Promise.all([
         customFetch<PendingRequest[]>("/api/driver/requests"),
         customFetch<CustomTripRequest[]>("/api/driver/custom-requests"),
+        customFetch<CustomTripRequest[]>("/api/driver/active-trips"),
       ]);
       setRequests(reqs);
       setCustomRequests(customReqs);
+      setActiveTrips(active);
     } catch { /* silent */ }
   }, []);
 
@@ -199,6 +219,12 @@ export default function DriverDashboard() {
     const interval = setInterval(fetchRequests, 10000);
     return () => clearInterval(interval);
   }, [fetchRequests]);
+
+  const handleRefresh = () => {
+    setIsRefreshSpinning(true);
+    fetchDashboard();
+    setTimeout(() => setIsRefreshSpinning(false), 600);
+  };
 
   const handleApprove = async (id: number) => {
     const key = `sched-${id}`;
@@ -236,6 +262,7 @@ export default function DriverDashboard() {
       await customFetch(`/api/driver/custom-requests/${id}/approve`, { method: "PUT" });
       setCustomRequests((prev) => prev.filter((r) => r.id !== id));
       toast({ title: "Custom trip approved", description: "Passenger has been confirmed." });
+      fetchRequests();
     } catch {
       toast({ title: "Error", description: "Could not approve custom trip.", variant: "destructive" });
     } finally {
@@ -252,6 +279,21 @@ export default function DriverDashboard() {
       toast({ title: "Custom trip rejected" });
     } catch {
       toast({ title: "Error", description: "Could not reject custom trip.", variant: "destructive" });
+    } finally {
+      setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; });
+    }
+  };
+
+  const handleCompleteTrip = async (id: number) => {
+    const key = `complete-${id}`;
+    setProcessingIds((s) => new Set(s).add(key));
+    try {
+      await customFetch(`/api/driver/custom-requests/${id}/complete`, { method: "PUT" });
+      setActiveTrips((prev) => prev.filter((r) => r.id !== id));
+      toast({ title: "Trip completed!", description: "The trip has been marked as finished." });
+      fetchDashboard();
+    } catch {
+      toast({ title: "Error", description: "Could not complete trip.", variant: "destructive" });
     } finally {
       setProcessingIds((s) => { const n = new Set(s); n.delete(key); return n; });
     }
@@ -346,6 +388,13 @@ export default function DriverDashboard() {
 
   return (
     <div className="flex-1 bg-muted/20 p-4 md:p-6">
+      <style>{`
+        @keyframes spin-once {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .spin-once { animation: spin-once 0.6s ease-in-out; }
+      `}</style>
       <div className="max-w-4xl mx-auto space-y-6">
 
         {/* Header */}
@@ -359,11 +408,63 @@ export default function DriverDashboard() {
               Welcome, {user?.name} — {vehicle.type.replace("_", " ")} operator
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={fetchDashboard} disabled={isLoading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? "animate-spin" : ""}`} />
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isLoading}>
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshSpinning || isLoading ? "spin-once" : ""}`} key={isRefreshSpinning ? "spinning" : "idle"} />
             Refresh
           </Button>
         </div>
+
+        {/* Active trips — confirmed passengers on their way */}
+        {activeTrips.length > 0 && (
+          <Card className="border-green-300 shadow-green-100 shadow-md">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4 text-green-600" />
+                Active Trips
+                <Badge className="ml-auto bg-green-600 hover:bg-green-600 text-white text-xs">
+                  {activeTrips.length} active
+                </Badge>
+              </CardTitle>
+              <CardDescription>Confirmed passengers currently on your vehicle</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {activeTrips.map((r) => (
+                  <div key={r.id} className="flex flex-col gap-3 p-4 rounded-xl border-2 border-green-200 bg-green-50/50">
+                    <div>
+                      <div className="font-semibold text-sm">{r.passengerName}</div>
+                      {r.passengerPhone && <div className="text-xs text-muted-foreground">{r.passengerPhone}</div>}
+                      <div className="text-xs mt-1.5 space-y-1">
+                        <div className="flex items-start gap-1.5 text-muted-foreground">
+                          <LocateFixed className="h-3 w-3 text-green-600 mt-0.5 shrink-0" />
+                          <span><span className="font-medium text-foreground">Pickup:</span> {r.pickupLabel}</span>
+                        </div>
+                        <div className="flex items-start gap-1.5 text-muted-foreground">
+                          <MapPin className="h-3 w-3 text-red-500 mt-0.5 shrink-0" />
+                          <span><span className="font-medium text-foreground">Dropoff:</span> {r.dropoffLabel}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-muted-foreground">
+                          <CalendarClock className="h-3 w-3 shrink-0" />
+                          {new Date(r.requestedTime).toLocaleString("en-PH", { dateStyle: "short", timeStyle: "short" })} · {r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                      {r.notes && <div className="text-xs text-muted-foreground mt-1 italic">"{r.notes}"</div>}
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full bg-green-700 hover:bg-green-800 text-white"
+                      disabled={processingIds.has(`complete-${r.id}`)}
+                      onClick={() => handleCompleteTrip(r.id)}
+                    >
+                      <Flag className="h-3.5 w-3.5 mr-1.5" />
+                      {processingIds.has(`complete-${r.id}`) ? "Marking complete…" : "Mark Trip as Finished"}
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Pending Requests — Scheduled */}
         <Card className={totalPending > 0 ? "border-amber-300 shadow-amber-100 shadow-md" : ""}>
@@ -479,7 +580,7 @@ export default function DriverDashboard() {
           </Card>
         )}
 
-        {/* Map — driver location + passenger pickup pins */}
+        {/* Map — driver location + passenger pins */}
         <Card className="overflow-hidden">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -487,7 +588,7 @@ export default function DriverDashboard() {
               Live Map
             </CardTitle>
             <CardDescription>
-              Your position (blue) and pending passenger pickup locations (orange)
+              Your position (blue) · Pending passengers (orange) · Confirmed passengers (green)
             </CardDescription>
           </CardHeader>
           <CardContent className="p-0">
@@ -514,42 +615,61 @@ export default function DriverDashboard() {
                     </div>
                   </Popup>
                 </Marker>
-                {/* Scheduled pickup pins (from route origin lookup) */}
+                {/* Scheduled pending pickup pins */}
                 {pickupPins.map((r) => (
-                  <Marker key={`sched-${r.id}`} position={r.coords} icon={createPassengerIcon()}>
+                  <Marker key={`sched-${r.id}`} position={r.coords} icon={createPendingPassengerIcon()}>
                     <Popup>
                       <div className="text-sm p-1 space-y-1">
                         <div className="font-semibold">{r.passengerName}</div>
                         <div className="text-xs text-muted-foreground">Pickup: {r.origin}</div>
                         <div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""} · {format(new Date(r.departureTime), "HH:mm")}</div>
+                        <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">Pending</Badge>
                       </div>
                     </Popup>
                   </Marker>
                 ))}
-                {/* Custom trip pickup pins (exact GPS coordinates) */}
+                {/* Custom pending pickup pins */}
                 {customRequests.map((r) => (
-                  <Marker key={`custom-${r.id}`} position={[r.pickupLat, r.pickupLng]} icon={createPassengerIcon()}>
+                  <Marker key={`custom-pending-${r.id}`} position={[r.pickupLat, r.pickupLng]} icon={createPendingPassengerIcon()}>
                     <Popup>
                       <div className="text-sm p-1 space-y-1">
                         <div className="font-semibold">{r.passengerName}</div>
                         <div className="text-xs text-muted-foreground">📍 {r.pickupLabel}</div>
                         <div className="text-xs text-muted-foreground">→ {r.dropoffLabel}</div>
-                        <div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""} · Custom trip</div>
+                        <div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}</div>
+                        <Badge className="bg-amber-100 text-amber-800 border-amber-200 text-[10px]">Pending</Badge>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+                {/* Confirmed / active trip pickup pins */}
+                {activeTrips.map((r) => (
+                  <Marker key={`active-${r.id}`} position={[r.pickupLat, r.pickupLng]} icon={createConfirmedPassengerIcon()}>
+                    <Popup>
+                      <div className="text-sm p-1 space-y-1">
+                        <div className="font-semibold">{r.passengerName}</div>
+                        <div className="text-xs text-muted-foreground">📍 {r.pickupLabel}</div>
+                        <div className="text-xs text-muted-foreground">→ {r.dropoffLabel}</div>
+                        <div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}</div>
+                        <Badge className="bg-green-100 text-green-800 border-green-200 text-[10px]">Confirmed</Badge>
                       </div>
                     </Popup>
                   </Marker>
                 ))}
               </MapContainer>
             </div>
-            <div className="px-4 py-2 border-t text-xs text-muted-foreground flex items-center gap-4">
+            <div className="px-4 py-2 border-t text-xs text-muted-foreground flex items-center gap-4 flex-wrap">
               <span className="flex items-center gap-1.5">
                 <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Your location
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Passenger pickup
+                <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Pending pickup
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-green-600 inline-block" /> Confirmed passenger
               </span>
               <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs px-2" onClick={refreshLocation} disabled={isRefreshingLocation}>
-                <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshingLocation ? "animate-spin" : ""}`} />
+                <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshingLocation ? "spin-once" : ""}`} key={isRefreshingLocation ? "spin" : "still"} />
                 Update my location
               </Button>
             </div>

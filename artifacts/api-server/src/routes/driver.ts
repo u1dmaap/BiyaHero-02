@@ -303,4 +303,37 @@ router.put("/driver/custom-requests/:id/reject", requireAuth, async (req: AuthRe
   res.json({ success: true });
 });
 
+router.get("/driver/active-trips", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const ctx = await requireDriver(req, res);
+  if (!ctx) return;
+  const { vehicle } = ctx;
+
+  const trips = await db
+    .select()
+    .from(customTripsTable)
+    .where(and(eq(customTripsTable.vehicleId, vehicle.id), eq(customTripsTable.status, "confirmed")))
+    .orderBy(desc(customTripsTable.createdAt));
+
+  res.json(trips);
+});
+
+router.put("/driver/custom-requests/:id/complete", requireAuth, async (req: AuthRequest, res): Promise<void> => {
+  const ctx = await requireDriver(req, res);
+  if (!ctx) return;
+  const { vehicle } = ctx;
+
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) { res.status(400).json({ error: "Bad request", message: "Invalid ID" }); return; }
+
+  const [trip] = await db
+    .select()
+    .from(customTripsTable)
+    .where(and(eq(customTripsTable.id, id), eq(customTripsTable.vehicleId, vehicle.id), eq(customTripsTable.status, "confirmed")));
+
+  if (!trip) { res.status(404).json({ error: "Not found", message: "Confirmed trip not found for your vehicle" }); return; }
+
+  const [updated] = await db.update(customTripsTable).set({ status: "completed" }).where(eq(customTripsTable.id, id)).returning();
+  res.json({ success: true, trip: updated });
+});
+
 export default router;
