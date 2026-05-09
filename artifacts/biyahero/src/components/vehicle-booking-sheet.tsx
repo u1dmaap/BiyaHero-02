@@ -120,7 +120,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
 
   return (
     <Sheet open={!!vehicle} onOpenChange={(o) => !o && handleClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0 overflow-hidden">
+      <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0 overflow-hidden top-16 h-[calc(100vh-4rem)]">
         {/* Header */}
         <SheetHeader className="px-5 pt-5 pb-4 border-b shrink-0">
           <div className="flex items-center gap-3">
