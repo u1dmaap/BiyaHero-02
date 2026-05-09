@@ -6,10 +6,46 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
 import {
   Truck, Users, MapPin, RefreshCw, CheckCircle2, Clock,
   Navigation, Wifi, WifiOff, AlertCircle, PhilippinePeso,
+  Bell, ThumbsUp, ThumbsDown, CalendarClock,
 } from "lucide-react";
+import { format } from "date-fns";
+
+import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
+import markerIcon from "leaflet/dist/images/marker-icon.png";
+import markerShadow from "leaflet/dist/images/marker-shadow.png";
+
+type LeafletIconDefaultInternal = typeof L.Icon.Default.prototype & { _getIconUrl?: () => string };
+delete (L.Icon.Default.prototype as LeafletIconDefaultInternal)._getIconUrl;
+L.Icon.Default.mergeOptions({ iconUrl: markerIcon, iconRetinaUrl: markerIcon2x, shadowUrl: markerShadow });
+
+const BATANGAS_COORDS: Record<string, [number, number]> = {
+  "Batangas City": [13.7565, 121.0583],
+  "Batangas Port": [13.7748, 121.0622],
+  "Lipa City": [13.9411, 121.1631],
+  "Tanauan": [14.0853, 121.0085],
+  "Nasugbu": [14.0703, 120.6262],
+  "Lemery": [13.8778, 120.9071],
+  "Balayan": [13.9394, 120.7238],
+  "San Jose": [13.8673, 121.0903],
+  "Rosario": [13.8477, 121.1979],
+  "Bauan": [13.7947, 121.0074],
+  "Tagaytay": [14.1153, 120.9621],
+  "Calapan": [13.4148, 121.1803],
+};
+
+function getCoords(place: string): [number, number] | null {
+  for (const [key, val] of Object.entries(BATANGAS_COORDS)) {
+    if (place.toLowerCase().includes(key.toLowerCase()) || key.toLowerCase().includes(place.toLowerCase())) {
+      return val;
+    }
+  }
+  return null;
+}
 
 type DriverStatus = "offline" | "available" | "en_route" | "arrived";
 
@@ -36,6 +72,21 @@ interface RecentBooking {
   createdAt: string;
 }
 
+interface PendingRequest {
+  id: number;
+  passengerName: string;
+  passengerPhone: string | null;
+  seatCount: number;
+  totalFare: number;
+  status: string;
+  paymentStatus: string;
+  createdAt: string;
+  scheduleId: number;
+  departureTime: string;
+  origin: string;
+  destination: string;
+}
+
 interface DashboardData {
   vehicle: Vehicle;
   recentBookings: RecentBooking[];
@@ -48,21 +99,62 @@ const STATUS_CONFIG: Record<DriverStatus, { label: string; color: string; bg: st
   arrived: { label: "Arrived", color: "text-amber-700", bg: "bg-amber-100", description: "At destination" },
 };
 
+function createDriverIcon() {
+  return new L.DivIcon({
+    className: "",
+    html: `<div style="width:20px;height:20px;border-radius:50%;background:#2563EB;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 4px 12px rgba(0,0,0,0.3);"></div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+    popupAnchor: [0, -14],
+  });
+}
+
+function createPassengerIcon() {
+  return new L.DivIcon({
+    className: "",
+    html: `<div style="position:relative;width:28px;height:36px;">
+      <div style="width:28px;height:28px;border-radius:50% 50% 50% 0;background:#F59E0B;transform:rotate(-45deg);border:3px solid white;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+      <div style="position:absolute;top:5px;left:5px;width:14px;height:14px;border-radius:50%;background:rgba(255,255,255,0.9);"></div>
+    </div>`,
+    iconSize: [28, 36],
+    iconAnchor: [14, 36],
+    popupAnchor: [0, -38],
+  });
+}
+
+function InvalidateSize() {
+  const map = useMap();
+  useLeafletEffect(() => {
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 500);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [map]);
+  return null;
+}
+
 export default function DriverDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
 
   const [data, setData] = useState<DashboardData | null>(null);
+  const [requests, setRequests] = useState<PendingRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [isUpdatingPassengers, setIsUpdatingPassengers] = useState(false);
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
+  const [processingIds, setProcessingIds] = useState<Set<number>>(new Set());
+
+  const tileUrl = `${import.meta.env.BASE_URL}api/tiles/{z}/{x}/{y}.png`.replace(/\/+api\//, "/api/");
 
   const fetchDashboard = useCallback(async () => {
     setIsLoading(true);
     try {
-      const result = await customFetch<DashboardData>("/api/driver/dashboard");
+      const [result, reqs] = await Promise.all([
+        customFetch<DashboardData>("/api/driver/dashboard"),
+        customFetch<PendingRequest[]>("/api/driver/requests"),
+      ]);
       setData(result);
+      setRequests(reqs);
     } catch {
       toast({ title: "Error", description: "Could not load dashboard.", variant: "destructive" });
     } finally {
@@ -70,9 +162,47 @@ export default function DriverDashboard() {
     }
   }, [toast]);
 
+  const fetchRequests = useCallback(async () => {
+    try {
+      const reqs = await customFetch<PendingRequest[]>("/api/driver/requests");
+      setRequests(reqs);
+    } catch { /* silent */ }
+  }, []);
+
+  useEffect(() => { fetchDashboard(); }, [fetchDashboard]);
+
+  // Poll for new requests every 10s
   useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
+    const interval = setInterval(fetchRequests, 10000);
+    return () => clearInterval(interval);
+  }, [fetchRequests]);
+
+  const handleApprove = async (id: number) => {
+    setProcessingIds((s) => new Set(s).add(id));
+    try {
+      await customFetch(`/api/driver/requests/${id}/approve`, { method: "PUT" });
+      setRequests((prev) => prev.filter((r) => r.id !== id));
+      toast({ title: "Request approved", description: "The passenger has been confirmed." });
+      fetchDashboard();
+    } catch {
+      toast({ title: "Error", description: "Could not approve request.", variant: "destructive" });
+    } finally {
+      setProcessingIds((s) => { const n = new Set(s); n.delete(id); return n; });
+    }
+  };
+
+  const handleReject = async (id: number) => {
+    setProcessingIds((s) => new Set(s).add(id));
+    try {
+      await customFetch(`/api/driver/requests/${id}/reject`, { method: "PUT" });
+      setRequests((prev) => prev.filter((r) => r.id !== id));
+      toast({ title: "Request rejected", description: "Seat has been released." });
+    } catch {
+      toast({ title: "Error", description: "Could not reject request.", variant: "destructive" });
+    } finally {
+      setProcessingIds((s) => { const n = new Set(s); n.delete(id); return n; });
+    }
+  };
 
   const updateStatus = async (driverStatus: DriverStatus) => {
     if (!data) return;
@@ -111,7 +241,7 @@ export default function DriverDashboard() {
 
   const refreshLocation = () => {
     if (!navigator.geolocation) {
-      toast({ title: "Unavailable", description: "Geolocation is not supported by your browser.", variant: "destructive" });
+      toast({ title: "Unavailable", description: "Geolocation is not supported.", variant: "destructive" });
       return;
     }
     setIsRefreshingLocation(true);
@@ -123,7 +253,7 @@ export default function DriverDashboard() {
             body: JSON.stringify({ currentLat: pos.coords.latitude, currentLng: pos.coords.longitude }),
           });
           setData((prev) => prev ? { ...prev, vehicle: { ...prev.vehicle, ...updated } } : prev);
-          toast({ title: "Location updated", description: "Your position has been refreshed on the map." });
+          toast({ title: "Location updated", description: "Your position has been refreshed." });
         } catch {
           toast({ title: "Error", description: "Could not update location.", variant: "destructive" });
         } finally {
@@ -155,10 +285,17 @@ export default function DriverDashboard() {
   const statusCfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.offline;
   const occupancyPct = vehicle.capacity > 0 ? Math.round((vehicle.currentPassengers / vehicle.capacity) * 100) : 0;
 
+  // Build map center and bounds from driver + pickup pins
+  const driverPos: [number, number] = [vehicle.currentLat, vehicle.currentLng];
+  const pickupPins = requests
+    .map((r) => ({ ...r, coords: getCoords(r.origin) }))
+    .filter((r) => r.coords !== null) as (PendingRequest & { coords: [number, number] })[];
+
   return (
     <div className="flex-1 bg-muted/20 p-4 md:p-6">
       <div className="max-w-4xl mx-auto space-y-6">
 
+        {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -175,6 +312,143 @@ export default function DriverDashboard() {
           </Button>
         </div>
 
+        {/* Pending Requests */}
+        <Card className={requests.length > 0 ? "border-amber-300 shadow-amber-100 shadow-md" : ""}>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Bell className={`h-4 w-4 ${requests.length > 0 ? "text-amber-500 animate-pulse" : "text-muted-foreground"}`} />
+              Pending Seat Requests
+              {requests.length > 0 && (
+                <Badge className="ml-auto bg-amber-500 hover:bg-amber-500 text-white text-xs">
+                  {requests.length} new
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription>Approve or reject passenger booking requests</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {requests.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <CheckCircle2 className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">No pending requests</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {requests.map((r) => (
+                  <div key={r.id} className="flex flex-col gap-3 p-4 rounded-xl border-2 border-amber-200 bg-amber-50/50">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-sm">{r.passengerName}</div>
+                        {r.passengerPhone && <div className="text-xs text-muted-foreground">{r.passengerPhone}</div>}
+                        <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />
+                          {r.origin} → {r.destination}
+                        </div>
+                        <div className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
+                          <CalendarClock className="h-3 w-3" />
+                          {format(new Date(r.departureTime), "HH:mm")} departure · {r.seatCount} seat{r.seatCount !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="font-bold text-sm flex items-center gap-0.5 justify-end text-primary">
+                          <PhilippinePeso className="h-3 w-3" />{r.totalFare.toLocaleString()}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground">total fare</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        className="flex-1 bg-green-600 hover:bg-green-700 text-white"
+                        disabled={processingIds.has(r.id)}
+                        onClick={() => handleApprove(r.id)}
+                      >
+                        <ThumbsUp className="h-3.5 w-3.5 mr-1.5" />
+                        {processingIds.has(r.id) ? "Processing…" : "Approve"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
+                        disabled={processingIds.has(r.id)}
+                        onClick={() => handleReject(r.id)}
+                      >
+                        <ThumbsDown className="h-3.5 w-3.5 mr-1.5" />
+                        Reject
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Map — driver location + passenger pickup pins */}
+        <Card className="overflow-hidden">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Navigation className="h-4 w-4 text-primary" />
+              Live Map
+            </CardTitle>
+            <CardDescription>
+              Your position (blue) and pending passenger pickup locations (orange)
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div style={{ height: 320, position: "relative" }}>
+              <MapContainer
+                center={driverPos}
+                zoom={13}
+                style={{ width: "100%", height: "100%" }}
+                scrollWheelZoom={false}
+                zoomControl={true}
+              >
+                <InvalidateSize />
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url={tileUrl}
+                  maxZoom={19}
+                />
+                {/* Driver pin */}
+                <Marker position={driverPos} icon={createDriverIcon()}>
+                  <Popup>
+                    <div className="text-sm font-semibold text-blue-700 p-1">
+                      Your location<br />
+                      <span className="text-xs text-muted-foreground font-normal">{vehicle.plateNumber}</span>
+                    </div>
+                  </Popup>
+                </Marker>
+                {/* Passenger pickup pins */}
+                {pickupPins.map((r) => (
+                  <Marker key={r.id} position={r.coords} icon={createPassengerIcon()}>
+                    <Popup>
+                      <div className="text-sm p-1 space-y-1">
+                        <div className="font-semibold">{r.passengerName}</div>
+                        <div className="text-xs text-muted-foreground">Pickup: {r.origin}</div>
+                        <div className="text-xs text-muted-foreground">{r.seatCount} seat{r.seatCount !== 1 ? "s" : ""} · {format(new Date(r.departureTime), "HH:mm")}</div>
+                      </div>
+                    </Popup>
+                  </Marker>
+                ))}
+              </MapContainer>
+            </div>
+            <div className="px-4 py-2 border-t text-xs text-muted-foreground flex items-center gap-4">
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" /> Your location
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" /> Passenger pickup
+              </span>
+              <Button variant="ghost" size="sm" className="ml-auto h-6 text-xs px-2" onClick={refreshLocation} disabled={isRefreshingLocation}>
+                <RefreshCw className={`h-3 w-3 mr-1 ${isRefreshingLocation ? "animate-spin" : ""}`} />
+                Update my location
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Vehicle info + Status + Passengers */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="md:col-span-1">
             <CardHeader className="pb-3">
@@ -202,10 +476,6 @@ export default function DriverDashboard() {
                 <span className="text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" /> Coords</span>
                 <span className="text-xs font-mono">{vehicle.currentLat.toFixed(4)}, {vehicle.currentLng.toFixed(4)}</span>
               </div>
-              <Button variant="outline" size="sm" className="w-full" onClick={refreshLocation} disabled={isRefreshingLocation}>
-                <RefreshCw className={`h-3 w-3 mr-2 ${isRefreshingLocation ? "animate-spin" : ""}`} />
-                {isRefreshingLocation ? "Updating..." : "Refresh Location"}
-              </Button>
             </CardContent>
           </Card>
 
@@ -266,28 +536,25 @@ export default function DriverDashboard() {
                   className="flex-1 text-lg font-bold h-12"
                   onClick={() => updatePassengers(-1)}
                   disabled={isUpdatingPassengers || vehicle.currentPassengers <= 0}
-                >
-                  -
-                </Button>
+                >-</Button>
                 <Button
                   className="flex-1 text-lg font-bold h-12"
                   onClick={() => updatePassengers(1)}
                   disabled={isUpdatingPassengers || vehicle.currentPassengers >= vehicle.capacity}
-                >
-                  +
-                </Button>
+                >+</Button>
               </div>
             </CardContent>
           </Card>
         </div>
 
+        {/* Recent confirmed bookings */}
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <Clock className="h-4 w-4 text-primary" />
               Recent Bookings
             </CardTitle>
-            <CardDescription>Last 10 bookings for your vehicle</CardDescription>
+            <CardDescription>Last 10 confirmed bookings for your vehicle</CardDescription>
           </CardHeader>
           <CardContent>
             {recentBookings.length === 0 ? (

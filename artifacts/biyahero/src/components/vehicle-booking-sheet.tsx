@@ -1,11 +1,7 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import {
   useListSchedules,
   useCreateBooking,
-  usePayBooking,
-  PaymentMethod,
-  type Booking,
 } from "@workspace/api-client-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -14,13 +10,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { format } from "date-fns";
 import {
-  Clock, MapPin, Users, CheckCircle2, ChevronRight, ChevronLeft,
-  Banknote, CreditCard, ShieldCheck, CalendarClock
+  Clock, MapPin, Users, CheckCircle2, ChevronRight, ChevronLeft, CalendarClock, HourglassIcon
 } from "lucide-react";
 
 interface VehicleInfo {
@@ -42,20 +36,16 @@ interface VehicleBookingSheetProps {
 const today = format(new Date(), "yyyy-MM-dd");
 
 export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetProps) {
-  const [, setLocation] = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
 
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [selectedScheduleId, setSelectedScheduleId] = useState<number | null>(null);
   const [seatCount, setSeatCount] = useState(1);
   const [passengerName, setPassengerName] = useState(user?.name || "");
   const [passengerPhone, setPassengerPhone] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethod.gcash);
-  const [createdBooking, setCreatedBooking] = useState<Booking | null>(null);
-  const [transactionId, setTransactionId] = useState("");
 
-  const { data: schedules, isLoading } = useListSchedules(
+  const { data: allSchedules, isLoading } = useListSchedules(
     {
       origin: vehicle?.routeOrigin || undefined,
       destination: vehicle?.routeDestination || undefined,
@@ -64,22 +54,14 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
     { query: { enabled: !!vehicle, staleTime: 30000 } }
   );
 
+  // Only show schedules for THIS specific vehicle
+  const schedules = allSchedules?.filter((s) => s.vehicleId === vehicle?.id);
   const selectedSchedule = schedules?.find((s) => s.id === selectedScheduleId);
 
   const createBooking = useCreateBooking({
     mutation: {
-      onSuccess: (data) => { setCreatedBooking(data); setStep(3); },
+      onSuccess: () => { setStep(3); },
       onError: (e) => toast({ title: "Booking failed", description: e.message, variant: "destructive" }),
-    },
-  });
-
-  const payBooking = usePayBooking({
-    mutation: {
-      onSuccess: (data) => {
-        if (data.success) { setTransactionId(data.transactionId); setStep(4); }
-        else toast({ title: "Payment failed", description: data.message || "Unknown error", variant: "destructive" });
-      },
-      onError: (e) => toast({ title: "Payment failed", description: e.message, variant: "destructive" }),
     },
   });
 
@@ -89,34 +71,21 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
     setSeatCount(1);
     setPassengerName(user?.name || "");
     setPassengerPhone("");
-    setCreatedBooking(null);
-    setTransactionId("");
     onClose();
   };
 
   const handleBook = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedScheduleId) return;
-    createBooking.mutate({ data: { scheduleId: selectedScheduleId, seatCount, passengerName, passengerPhone: passengerPhone || undefined } });
-  };
-
-  const handlePay = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!createdBooking) return;
-    payBooking.mutate({
-      id: createdBooking.id,
+    createBooking.mutate({
       data: {
-        method: paymentMethod,
-        mobileNumber: paymentMethod === "gcash" || paymentMethod === "maya" ? "09123456789" : undefined,
-        cardNumber: paymentMethod === "credit_card" ? "4111222233334444" : undefined,
-        cardHolder: paymentMethod === "credit_card" ? passengerName : undefined,
-        expiryDate: paymentMethod === "credit_card" ? "12/25" : undefined,
-        cvv: paymentMethod === "credit_card" ? "123" : undefined,
+        scheduleId: selectedScheduleId,
+        seatCount,
+        passengerName,
+        passengerPhone: passengerPhone || undefined,
       },
     });
   };
-
-  const totalFare = selectedSchedule ? selectedSchedule.fare * seatCount : 0;
 
   return (
     <Sheet open={!!vehicle} onOpenChange={(o) => !o && handleClose()}>
@@ -140,12 +109,11 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
               <span className="font-medium text-foreground">{vehicle.routeDestination}</span>
             </div>
           )}
-          {/* Steps */}
-          <div className="flex items-center gap-1 mt-2">
-            {["Schedule", "Details", "Payment", "Done"].map((label, i) => (
-              <div key={i} className="flex items-center gap-1 flex-1">
-                <div className={`h-1.5 rounded-full flex-1 transition-all duration-300 ${step > i ? "bg-primary" : "bg-muted"}`} />
-                {i < 3 && <div className={`h-1.5 w-1.5 rounded-full transition-colors ${step > i + 1 ? "bg-primary" : "bg-muted"}`} />}
+          {/* Step progress */}
+          <div className="flex gap-1.5 mt-2">
+            {["Pick Trip", "Your Details", "Requested!"].map((label, i) => (
+              <div key={i} className="flex-1">
+                <div className={`h-1.5 rounded-full transition-all duration-300 ${step > i ? "bg-primary" : step === i + 1 ? "bg-primary/40" : "bg-muted"}`} />
               </div>
             ))}
           </div>
@@ -167,7 +135,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                 <div className="text-center py-12 text-muted-foreground">
                   <Clock className="h-10 w-10 mx-auto mb-3 opacity-40" />
                   <p className="text-sm font-medium">No trips available today</p>
-                  <p className="text-xs mt-1">Check back later or browse the search page</p>
+                  <p className="text-xs mt-1">This vehicle has no scheduled trips today</p>
                 </div>
               ) : (
                 schedules.map((s) => (
@@ -189,7 +157,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                         </div>
                         <div className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
                           <Users className="h-3 w-3" />
-                          {s.availableSeats} seats left
+                          {s.availableSeats} seats available
                         </div>
                       </div>
                       <div className="text-right">
@@ -213,12 +181,12 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                   <span className="font-semibold">{format(new Date(selectedSchedule.departureTime), "HH:mm")}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Fare / seat</span>
-                  <span className="font-semibold">₱{selectedSchedule.fare.toLocaleString()}</span>
+                  <span className="text-muted-foreground">Route</span>
+                  <span className="font-semibold">{selectedSchedule.origin} → {selectedSchedule.destination}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Available</span>
-                  <span className="font-semibold">{selectedSchedule.availableSeats} seats</span>
+                  <span className="text-muted-foreground">Fare / seat</span>
+                  <span className="font-semibold">₱{selectedSchedule.fare.toLocaleString()}</span>
                 </div>
               </div>
 
@@ -233,7 +201,7 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
               <Separator />
               <div className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="pname">Passenger Name</Label>
+                  <Label htmlFor="pname">Your Name</Label>
                   <Input id="pname" required value={passengerName} onChange={e => setPassengerName(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
@@ -241,73 +209,48 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
                   <Input id="pphone" type="tel" placeholder="09xx xxx xxxx" value={passengerPhone} onChange={e => setPassengerPhone(e.target.value)} />
                 </div>
               </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-start gap-2">
+                <HourglassIcon className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                <p>Your request will be sent to the driver for approval. You'll see the status update in <strong>My Trips</strong>.</p>
+              </div>
             </form>
           )}
 
-          {/* Step 3: Payment */}
+          {/* Step 3: Request Sent */}
           {step === 3 && (
-            <form id="payment-form" onSubmit={handlePay} className="space-y-4">
-              <div className="bg-muted/40 rounded-xl p-4 text-sm space-y-1.5">
-                <div className="flex justify-between font-bold">
-                  <span>Total ({seatCount} {seatCount === 1 ? "seat" : "seats"})</span>
-                  <span className="text-primary text-base">₱{totalFare.toLocaleString()}</span>
-                </div>
+            <div className="text-center py-10 space-y-5">
+              <div className="w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mx-auto">
+                <CheckCircle2 className="h-10 w-10 text-primary" />
               </div>
-              <RadioGroup value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)} className="space-y-2">
-                {[
-                  { value: PaymentMethod.gcash, label: "GCash", icon: <Banknote className="h-4 w-4 text-blue-500" /> },
-                  { value: PaymentMethod.maya, label: "Maya", icon: <Banknote className="h-4 w-4 text-green-500" /> },
-                  { value: PaymentMethod.credit_card, label: "Credit / Debit Card", icon: <CreditCard className="h-4 w-4 text-muted-foreground" /> },
-                  { value: PaymentMethod.cash, label: "Cash (Over the Counter)", icon: <Banknote className="h-4 w-4 text-muted-foreground" /> },
-                ].map(({ value, label, icon }) => (
-                  <div key={value} className="flex items-center gap-3 border-2 rounded-xl p-3.5 cursor-pointer has-[:checked]:border-primary has-[:checked]:bg-primary/5 transition-all hover:border-primary/40">
-                    <RadioGroupItem value={value} id={value} />
-                    <Label htmlFor={value} className="flex-1 cursor-pointer flex items-center justify-between">
-                      <span className="font-medium text-sm">{label}</span>
-                      {icon}
-                    </Label>
-                  </div>
-                ))}
-              </RadioGroup>
-              <div className="flex items-start gap-2 text-xs text-muted-foreground pt-1">
-                <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-primary mt-0.5" />
-                <p>Payments are encrypted and processed securely.</p>
-              </div>
-            </form>
-          )}
-
-          {/* Step 4: Confirmation */}
-          {step === 4 && (
-            <div className="text-center py-8 space-y-5">
-              <CheckCircle2 className="h-16 w-16 text-green-500 mx-auto" />
               <div>
-                <h3 className="text-xl font-bold">Booking Confirmed!</h3>
-                <p className="text-sm text-muted-foreground mt-1">Have a safe journey!</p>
+                <h3 className="text-xl font-bold">Request Sent!</h3>
+                <p className="text-sm text-muted-foreground mt-2 max-w-xs mx-auto">
+                  Your seat request has been sent to the driver. Once approved you can pay and confirm your trip.
+                </p>
               </div>
-              <div className="bg-muted/50 rounded-xl p-4 text-sm text-left space-y-2">
+              <div className="bg-muted/50 rounded-xl p-4 text-sm text-left space-y-1.5">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Booking ID</span>
-                  <span className="font-mono font-bold">#{createdBooking?.id}</span>
+                  <span className="text-muted-foreground">Vehicle</span>
+                  <span className="font-semibold">{vehicle?.plateNumber}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Ref</span>
-                  <span className="font-mono text-xs self-center">{transactionId.slice(0, 20)}…</span>
+                  <span className="text-muted-foreground">Seats</span>
+                  <span className="font-semibold">{seatCount}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Status</span>
-                  <span className="font-semibold text-green-600">Paid</span>
-                </div>
+                {selectedSchedule && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Est. Fare</span>
+                    <span className="font-semibold text-primary">₱{(selectedSchedule.fare * seatCount).toLocaleString()}</span>
+                  </div>
+                )}
               </div>
-              <div className="flex flex-col gap-2">
-                <Button onClick={() => { handleClose(); setLocation("/trips"); }} className="w-full">View My Trips</Button>
-                <Button variant="outline" onClick={handleClose} className="w-full">Back to Map</Button>
-              </div>
+              <Button onClick={handleClose} className="w-full">Back to Map</Button>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        {step !== 4 && (
+        {step !== 3 && (
           <div className="border-t px-5 py-4 flex items-center justify-between shrink-0 bg-background">
             {step > 1 ? (
               <Button variant="ghost" size="sm" onClick={() => setStep((s) => (s - 1) as typeof step)}>
@@ -322,17 +265,14 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
               </Button>
             )}
             {step === 2 && (
-              <Button type="submit" form="passenger-form" size="sm" disabled={createBooking.isPending}>
-                {createBooking.isPending ? "Processing…" : "Proceed to Payment"}
-                <ChevronRight className="h-4 w-4 ml-1" />
-              </Button>
-            )}
-            {step === 3 && (
-              <Button type="submit" form="payment-form" size="sm" disabled={payBooking.isPending}
+              <Button
+                type="submit" form="passenger-form" size="sm"
+                disabled={createBooking.isPending}
                 style={{ backgroundColor: vehicle?.color }}
                 className="text-white hover:opacity-90"
               >
-                {payBooking.isPending ? "Processing…" : `Pay ₱${totalFare.toLocaleString()}`}
+                {createBooking.isPending ? "Sending…" : "Send Request"}
+                <ChevronRight className="h-4 w-4 ml-1" />
               </Button>
             )}
           </div>

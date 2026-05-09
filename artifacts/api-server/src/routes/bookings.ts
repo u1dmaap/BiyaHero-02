@@ -127,7 +127,7 @@ router.post("/bookings", requireAuth, async (req: AuthRequest, res): Promise<voi
           passengerName,
           passengerPhone: passengerPhone ?? null,
           totalFare,
-          status: "confirmed",
+          status: "pending",
           paymentStatus: "unpaid",
         })
         .returning();

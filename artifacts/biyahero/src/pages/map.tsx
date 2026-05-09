@@ -15,14 +15,14 @@ type LeafletIconDefaultInternal = typeof L.Icon.Default.prototype & { _getIconUr
 delete (L.Icon.Default.prototype as LeafletIconDefaultInternal)._getIconUrl;
 L.Icon.Default.mergeOptions({ iconUrl: markerIcon, iconRetinaUrl: markerIcon2x, shadowUrl: markerShadow });
 
+const HIDDEN_TYPES = new Set(["fx", "ferry"]);
+
 const vehicleColors: Record<string, string> = {
   [VehicleType.jeepney]: "#E11D48",
   [VehicleType.tricycle]: "#F59E0B",
   [VehicleType.bus]: "#2563EB",
   [VehicleType.van]: "#10B981",
-  [VehicleType.fx]: "#8B5CF6",
   [VehicleType.uv_express]: "#F97316",
-  [VehicleType.ferry]: "#06B6D4",
 };
 
 interface VehicleForBooking {
@@ -88,7 +88,7 @@ export default function MapPage() {
 
   const filteredVehicles = useMemo(() => {
     if (!vehicles) return [];
-    return vehicles.filter((v) => activeTypes.has(v.type as VehicleType));
+    return vehicles.filter((v) => !HIDDEN_TYPES.has(v.type) && activeTypes.has(v.type as VehicleType));
   }, [vehicles, activeTypes]);
 
   const toggleType = (type: VehicleType) => {
@@ -264,7 +264,7 @@ export default function MapPage() {
 
         <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
           <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-3">Filter by type</p>
-          {Object.values(VehicleType).map((type) => {
+          {Object.values(VehicleType).filter((t) => !HIDDEN_TYPES.has(t)).map((type) => {
             const count = vehicles?.filter((v) => v.type === type).length ?? 0;
             return (
               <label
