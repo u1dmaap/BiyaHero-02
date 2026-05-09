@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Map, Menu, X, LogOut, Navigation, Truck } from "lucide-react";
+import { Menu, X, LogOut, Navigation, Truck } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 
@@ -26,24 +26,6 @@ export function Navbar() {
               >
                 <Truck className="h-4 w-4" />
                 Dashboard
-              </Link>
-              <Link
-                href="/map"
-                className={`transition-colors hover:text-primary flex items-center gap-1.5 ${location === "/map" ? "text-primary" : "text-muted-foreground"}`}
-              >
-                <Map className="h-4 w-4" />
-                Map
-              </Link>
-            </nav>
-          )}
-          {!isDriver && (
-            <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-              <Link
-                href="/map"
-                className={`transition-colors hover:text-primary flex items-center gap-1.5 ${location === "/map" ? "text-primary" : "text-muted-foreground"}`}
-              >
-                <Map className="h-4 w-4" />
-                Map
               </Link>
             </nav>
           )}
@@ -89,18 +71,9 @@ export function Navbar() {
       {isMobileMenuOpen && (
         <div className="md:hidden border-t border-border bg-background px-4 py-4 space-y-4">
           <nav className="flex flex-col gap-4">
-            {isDriver ? (
-              <>
-                <Link href="/driver" className="flex items-center gap-2 text-sm font-medium text-muted-foreground" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Truck className="h-4 w-4" /> Dashboard
-                </Link>
-                <Link href="/map" className="flex items-center gap-2 text-sm font-medium text-muted-foreground" onClick={() => setIsMobileMenuOpen(false)}>
-                  <Map className="h-4 w-4" /> Map
-                </Link>
-              </>
-            ) : (
-              <Link href="/map" className="flex items-center gap-2 text-sm font-medium text-muted-foreground" onClick={() => setIsMobileMenuOpen(false)}>
-                <Map className="h-4 w-4" /> Map
+            {isDriver && (
+              <Link href="/driver" className="flex items-center gap-2 text-sm font-medium text-muted-foreground" onClick={() => setIsMobileMenuOpen(false)}>
+                <Truck className="h-4 w-4" /> Dashboard
               </Link>
             )}
             {isAuthenticated ? (
