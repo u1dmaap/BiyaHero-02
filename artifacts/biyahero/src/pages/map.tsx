@@ -76,7 +76,7 @@ function createActiveDriverIcon() {
   const color = "#16A34A";
   const html = `
     <div style="position:relative;width:${size + 24}px;height:${h + 12}px;display:flex;align-items:flex-start;justify-content:center;">
-      <div class="driver-pulse-ring" style="position:absolute;top:0;left:12px;width:${size + 12}px;height:${size + 12}px;border-radius:50%;border:3px solid ${color};opacity:0;animation:driver-pulse 1.6s ease-out infinite;"></div>
+      <div class="driver-pulse-ring" style="position:absolute;top:0;left:6px;width:${size + 12}px;height:${size + 12}px;border-radius:50%;border:3px solid ${color};opacity:0;animation:driver-pulse 1.6s ease-out infinite;"></div>
       <div style="position:absolute;top:6px;left:12px;">
         ${pin(color, size)}
       </div>
