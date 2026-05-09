@@ -32,6 +32,7 @@ public class MapController {
     @GetMapping("/tiles/{z}/{x}/{y}")
     public void getTile(@PathVariable String z, @PathVariable String x, @PathVariable String y,
                         HttpServletResponse response) throws IOException {
+        y = y.replaceAll("\\.png$", "");
         String[] subdomains = {"a", "b", "c", "d"};
         String s = subdomains[(Integer.parseInt(x) + Integer.parseInt(y)) % subdomains.length];
         String tileUrl = "https://" + s + ".basemaps.cartocdn.com/rastertiles/voyager/" + z + "/" + x + "/" + y + ".png";
