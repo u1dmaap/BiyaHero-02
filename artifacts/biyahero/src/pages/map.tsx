@@ -3,9 +3,9 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { useGetMapVehicles, VehicleType } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bus, Car, Ship, Users, SlidersHorizontal, X, LocateFixed, RefreshCw, CalendarSearch } from "lucide-react";
-import { Link } from "wouter";
+import { Bus, Car, Ship, Users, SlidersHorizontal, X, LocateFixed, RefreshCw, Ticket } from "lucide-react";
 import L from "leaflet";
+import { VehicleBookingSheet } from "@/components/vehicle-booking-sheet";
 
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
@@ -25,15 +25,16 @@ const vehicleColors: Record<string, string> = {
   [VehicleType.ferry]: "#06B6D4",
 };
 
-const vehicleIcons: Record<string, React.ElementType> = {
-  [VehicleType.jeepney]: Car,
-  [VehicleType.tricycle]: Car,
-  [VehicleType.bus]: Bus,
-  [VehicleType.van]: Car,
-  [VehicleType.fx]: Car,
-  [VehicleType.uv_express]: Car,
-  [VehicleType.ferry]: Ship,
-};
+interface VehicleForBooking {
+  id: number;
+  type: string;
+  plateNumber: string;
+  operator: string;
+  routeName?: string | null;
+  routeOrigin?: string | null;
+  routeDestination?: string | null;
+  color: string;
+}
 
 function createVehicleIcon(color: string) {
   return new L.DivIcon({
@@ -81,6 +82,7 @@ export default function MapPage() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null);
+  const [bookingVehicle, setBookingVehicle] = useState<VehicleForBooking | null>(null);
 
   const { data: vehicles, isLoading, refetch } = useGetMapVehicles({ query: { queryKey: ["map-vehicles"], refetchInterval: 30000 } } as Parameters<typeof useGetMapVehicles>[0]);
 
@@ -105,7 +107,7 @@ export default function MapPage() {
     });
   };
 
-  const center: [number, number] = [14.5995, 120.9842];
+  const center: [number, number] = [13.7565, 121.0583];
   const tileUrl = `${import.meta.env.BASE_URL}api/tiles/{z}/{x}/{y}.png`.replace(/\/+api\//, "/api/");
 
   return (
@@ -136,11 +138,6 @@ export default function MapPage() {
 
         {filteredVehicles.map((vehicle) => {
           const color = vehicleColors[vehicle.type] || "#666";
-          const bookUrl = vehicle.routeOrigin && vehicle.routeDestination
-            ? `/search?origin=${encodeURIComponent(vehicle.routeOrigin)}&destination=${encodeURIComponent(vehicle.routeDestination)}`
-            : vehicle.routeOrigin
-              ? `/search?origin=${encodeURIComponent(vehicle.routeOrigin)}`
-              : "/search";
           return (
             <Marker
               key={vehicle.id}
@@ -190,15 +187,25 @@ export default function MapPage() {
                       </div>
                     )}
                   </div>
-                  <Link href={bookUrl}>
-                    <button
-                      className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg px-3 py-2 transition-opacity hover:opacity-90"
-                      style={{ backgroundColor: color }}
-                    >
-                      <CalendarSearch className="h-3.5 w-3.5" />
-                      Find &amp; Book a Seat
-                    </button>
-                  </Link>
+                  <button
+                    onClick={() =>
+                      setBookingVehicle({
+                        id: vehicle.id,
+                        type: vehicle.type,
+                        plateNumber: vehicle.plateNumber,
+                        operator: vehicle.operator,
+                        routeName: vehicle.routeName,
+                        routeOrigin: vehicle.routeOrigin,
+                        routeDestination: vehicle.routeDestination,
+                        color,
+                      })
+                    }
+                    className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg px-3 py-2 transition-opacity hover:opacity-90"
+                    style={{ backgroundColor: color }}
+                  >
+                    <Ticket className="h-3.5 w-3.5" />
+                    Book a Seat
+                  </button>
                 </div>
               </Popup>
             </Marker>
@@ -206,6 +213,7 @@ export default function MapPage() {
         })}
       </MapContainer>
 
+      {/* Right-side action buttons */}
       <div className="absolute top-4 right-4 z-[1000] flex flex-col gap-2">
         <Button
           size="icon"
@@ -236,51 +244,62 @@ export default function MapPage() {
         </Button>
       </div>
 
-      {panelOpen && (
-        <div className="absolute top-4 left-4 z-[1000] w-72 bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-100 overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-            <div>
-              <h2 className="font-bold text-sm text-gray-900">Live Map</h2>
-              <p className="text-[11px] text-gray-500 mt-0.5">Metro Manila public transport</p>
-            </div>
-            <button onClick={() => setPanelOpen(false)} className="text-gray-400 hover:text-gray-700 transition-colors">
-              <X className="h-4 w-4" />
-            </button>
+      {/* Animated filter panel */}
+      <div
+        className={`absolute top-4 left-4 z-[1000] w-72 bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-100 overflow-hidden transition-all duration-300 ease-in-out ${
+          panelOpen
+            ? "opacity-100 translate-x-0 pointer-events-auto"
+            : "opacity-0 -translate-x-4 pointer-events-none"
+        }`}
+      >
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
+          <div>
+            <h2 className="font-bold text-sm text-gray-900">Live Map</h2>
+            <p className="text-[11px] text-gray-500 mt-0.5">Batangas Province public transport</p>
           </div>
+          <button onClick={() => setPanelOpen(false)} className="text-gray-400 hover:text-gray-700 transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
 
-          <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
-            <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-3">Filter by type</p>
-            {Object.values(VehicleType).map((type) => {
-              const count = vehicles?.filter((v) => v.type === type).length ?? 0;
-              return (
-                <label
-                  key={type}
-                  htmlFor={`type-${type}`}
-                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
-                >
-                  <Checkbox
-                    id={`type-${type}`}
-                    checked={activeTypes.has(type as VehicleType)}
-                    onCheckedChange={() => toggleType(type as VehicleType)}
-                  />
-                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: vehicleColors[type] }} />
-                  <span className="text-sm font-medium capitalize flex-1 text-gray-700">
-                    {type.replace("_", " ")}
-                  </span>
-                  <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">{count}</span>
-                </label>
-              );
-            })}
-          </div>
+        <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-3">Filter by type</p>
+          {Object.values(VehicleType).map((type) => {
+            const count = vehicles?.filter((v) => v.type === type).length ?? 0;
+            return (
+              <label
+                key={type}
+                htmlFor={`type-${type}`}
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors"
+              >
+                <Checkbox
+                  id={`type-${type}`}
+                  checked={activeTypes.has(type as VehicleType)}
+                  onCheckedChange={() => toggleType(type as VehicleType)}
+                />
+                <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: vehicleColors[type] }} />
+                <span className="text-sm font-medium capitalize flex-1 text-gray-700">
+                  {type.replace("_", " ")}
+                </span>
+                <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">{count}</span>
+              </label>
+            );
+          })}
+        </div>
 
-          <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/80">
-            <div className="flex justify-between items-center text-sm">
-              <span className="text-gray-500 text-xs">Showing</span>
-              <span className="font-bold text-primary">{filteredVehicles.length} vehicles</span>
-            </div>
+        <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/80">
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-gray-500 text-xs">Showing</span>
+            <span className="font-bold text-primary">{filteredVehicles.length} vehicles</span>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Booking sheet — rendered outside MapContainer so it's a normal React portal */}
+      <VehicleBookingSheet
+        vehicle={bookingVehicle}
+        onClose={() => setBookingVehicle(null)}
+      />
     </div>
   );
 }
