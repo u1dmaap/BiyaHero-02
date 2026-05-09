@@ -86,19 +86,6 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
 
   return (
     <>
-      <LocationPickerMap
-        open={pickerOpen === "pickup"}
-        onClose={() => setPickerOpen(null)}
-        onConfirm={(loc) => { setPickup(loc); setPickerOpen(null); }}
-        title="Set Your Pickup Location"
-      />
-      <LocationPickerMap
-        open={pickerOpen === "dropoff"}
-        onClose={() => setPickerOpen(null)}
-        onConfirm={(loc) => { setDropoff(loc); setPickerOpen(null); }}
-        title="Set Your Dropoff Location"
-      />
-
       <Sheet open={!!vehicle} onOpenChange={(o) => !o && handleClose()}>
         <SheetContent side="right" className="w-full sm:max-w-md p-0 flex flex-col gap-0 overflow-hidden top-16 h-[calc(100vh-4rem)]">
           {/* Header */}
@@ -292,6 +279,19 @@ export function VehicleBookingSheet({ vehicle, onClose }: VehicleBookingSheetPro
           )}
         </SheetContent>
       </Sheet>
+
+      <LocationPickerMap
+        open={pickerOpen === "pickup"}
+        onClose={() => setPickerOpen(null)}
+        onConfirm={(loc) => { setPickup(loc); setPickerOpen(null); }}
+        title="Set Your Pickup Location"
+      />
+      <LocationPickerMap
+        open={pickerOpen === "dropoff"}
+        onClose={() => setPickerOpen(null)}
+        onConfirm={(loc) => { setDropoff(loc); setPickerOpen(null); }}
+        title="Set Your Dropoff Location"
+      />
     </>
   );
 }
