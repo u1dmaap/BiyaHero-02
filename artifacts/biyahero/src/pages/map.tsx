@@ -3,7 +3,8 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { useGetMapVehicles, VehicleType } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Bus, Car, Ship, Users, SlidersHorizontal, X, LocateFixed, RefreshCw } from "lucide-react";
+import { Bus, Car, Ship, Users, SlidersHorizontal, X, LocateFixed, RefreshCw, CalendarSearch } from "lucide-react";
+import { Link } from "wouter";
 import L from "leaflet";
 
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
@@ -135,16 +136,21 @@ export default function MapPage() {
 
         {filteredVehicles.map((vehicle) => {
           const color = vehicleColors[vehicle.type] || "#666";
+          const bookUrl = vehicle.routeOrigin && vehicle.routeDestination
+            ? `/search?origin=${encodeURIComponent(vehicle.routeOrigin)}&destination=${encodeURIComponent(vehicle.routeDestination)}`
+            : vehicle.routeOrigin
+              ? `/search?origin=${encodeURIComponent(vehicle.routeOrigin)}`
+              : "/search";
           return (
             <Marker
               key={vehicle.id}
               position={[vehicle.currentLat, vehicle.currentLng]}
               icon={createVehicleIcon(color)}
             >
-              <Popup minWidth={220}>
+              <Popup minWidth={240}>
                 <div className="p-1">
                   <div className="flex items-center gap-2 mb-2 pb-2 border-b">
-                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: color }} />
+                    <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: color }} />
                     <strong className="uppercase tracking-wide text-sm">{vehicle.type.replace("_", " ")}</strong>
                     <span className={`ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                       vehicle.driverStatus === "available" ? "bg-green-100 text-green-800" :
@@ -170,13 +176,29 @@ export default function MapPage() {
                         <span className="font-medium truncate max-w-[130px]">{vehicle.routeName}</span>
                       </div>
                     )}
+                    {vehicle.routeOrigin && vehicle.routeDestination && (
+                      <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                        <span>{vehicle.routeOrigin}</span>
+                        <span className="mx-1">→</span>
+                        <span>{vehicle.routeDestination}</span>
+                      </div>
+                    )}
                     {vehicle.currentPassengers != null && (
-                      <div className="flex justify-between items-center mt-2 pt-2 border-t">
+                      <div className="flex justify-between items-center mt-1.5 pt-1.5 border-t">
                         <span className="text-gray-500 flex items-center gap-1"><Users className="h-3 w-3" /> Passengers</span>
                         <span className="font-bold" style={{ color }}>{vehicle.currentPassengers}</span>
                       </div>
                     )}
                   </div>
+                  <Link href={bookUrl}>
+                    <button
+                      className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg px-3 py-2 transition-opacity hover:opacity-90"
+                      style={{ backgroundColor: color }}
+                    >
+                      <CalendarSearch className="h-3.5 w-3.5" />
+                      Find &amp; Book a Seat
+                    </button>
+                  </Link>
                 </div>
               </Popup>
             </Marker>

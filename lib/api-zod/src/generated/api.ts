@@ -326,6 +326,8 @@ export const GetMapVehiclesResponseItem = zod.object({
   currentLat: zod.number(),
   currentLng: zod.number(),
   routeName: zod.string().nullish(),
+  routeOrigin: zod.string().nullish(),
+  routeDestination: zod.string().nullish(),
   availableSeats: zod.number().nullish(),
   currentPassengers: zod.number().nullish(),
   driverStatus: zod.string().nullish(),

@@ -46,6 +46,8 @@ router.get("/map/vehicles", async (req, res): Promise<void> => {
       currentLat: vehiclesTable.currentLat,
       currentLng: vehiclesTable.currentLng,
       routeName: routesTable.name,
+      routeOrigin: routesTable.origin,
+      routeDestination: routesTable.destination,
       currentPassengers: vehiclesTable.currentPassengers,
       driverStatus: vehiclesTable.driverStatus,
     })
