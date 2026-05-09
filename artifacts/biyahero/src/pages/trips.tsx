@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { customFetch } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Ticket, AlertCircle, LocateFixed, MapPin, Clock, CheckCircle2, Users, CalendarClock, Star } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Ticket, AlertCircle, LocateFixed, MapPin, Clock, CheckCircle2, Users, CalendarClock, Star, Truck } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 interface CustomTrip {
   id: number;
@@ -25,10 +25,10 @@ interface CustomTrip {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bar: string }> = {
-  pending:   { label: "Pending Approval",      color: "text-amber-700", bar: "bg-amber-400" },
+  pending:   { label: "Pending Approval",       color: "text-amber-700", bar: "bg-amber-400" },
   confirmed: { label: "Confirmed — On the Way", color: "text-green-700", bar: "bg-green-500" },
-  rejected:  { label: "Rejected",              color: "text-red-700",   bar: "bg-red-500"   },
-  completed: { label: "Completed",             color: "text-blue-700",  bar: "bg-blue-500"  },
+  rejected:  { label: "Rejected",               color: "text-red-700",   bar: "bg-red-500"   },
+  completed: { label: "Completed",              color: "text-blue-700",  bar: "bg-blue-500"  },
 };
 
 const STATUS_ICON: Record<string, React.ReactNode> = {
@@ -37,8 +37,6 @@ const STATUS_ICON: Record<string, React.ReactNode> = {
   rejected:  <AlertCircle className="h-4 w-4 text-red-500" />,
   completed: <CheckCircle2 className="h-4 w-4 text-blue-500" />,
 };
-
-// ─── Star rating widget ───────────────────────────────────────────────────────
 
 function StarRating({
   tripId,
@@ -123,9 +121,15 @@ function StarRating({
   );
 }
 
-// ─── Trip card ────────────────────────────────────────────────────────────────
-
-function TripCard({ trip, onRated }: { trip: CustomTrip; onRated: (id: number, rating: number, comment: string) => void }) {
+function TripCard({
+  trip,
+  isDriver,
+  onRated,
+}: {
+  trip: CustomTrip;
+  isDriver: boolean;
+  onRated: (id: number, rating: number, comment: string) => void;
+}) {
   const cfg = STATUS_CONFIG[trip.status] ?? { label: trip.status, color: "text-gray-700", bar: "bg-gray-400" };
   const icon = STATUS_ICON[trip.status] ?? <Clock className="h-4 w-4 text-gray-400" />;
   const isActive = trip.status === "pending" || trip.status === "confirmed";
@@ -138,6 +142,14 @@ function TripCard({ trip, onRated }: { trip: CustomTrip; onRated: (id: number, r
           <div className="flex items-center gap-2">{icon}<span className={`font-semibold text-sm ${cfg.color}`}>{cfg.label}</span></div>
           <span className="text-xs text-muted-foreground font-mono shrink-0">#{trip.id}</span>
         </div>
+
+        {isDriver && (
+          <div className="flex items-center gap-1.5 mb-3 text-sm font-medium">
+            <Users className="h-4 w-4 text-primary shrink-0" />
+            <span>{trip.passengerName}</span>
+            {trip.passengerPhone && <span className="text-xs text-muted-foreground ml-1">· {trip.passengerPhone}</span>}
+          </div>
+        )}
 
         <div className="space-y-2 text-sm">
           <div className="flex items-start gap-2.5 text-gray-700">
@@ -156,7 +168,7 @@ function TripCard({ trip, onRated }: { trip: CustomTrip; onRated: (id: number, r
           {trip.notes && <span className="italic text-gray-400">"{trip.notes}"</span>}
         </div>
 
-        {isActive && (
+        {isActive && !isDriver && (
           <div className="mt-3">
             <Button variant="outline" size="sm" asChild className="w-full text-xs">
               <Link href="/map">View on Map</Link>
@@ -164,7 +176,7 @@ function TripCard({ trip, onRated }: { trip: CustomTrip; onRated: (id: number, r
           </div>
         )}
 
-        {trip.status === "completed" && (
+        {trip.status === "completed" && !isDriver && (
           <StarRating
             tripId={trip.id}
             existingRating={trip.rating}
@@ -176,24 +188,24 @@ function TripCard({ trip, onRated }: { trip: CustomTrip; onRated: (id: number, r
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function TripsPage() {
   const { toast } = useToast();
+  const { isDriver } = useAuth();
   const [trips, setTrips] = useState<CustomTrip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchTrips = useCallback(async () => {
     setIsLoading(true);
     try {
-      const data = await customFetch<CustomTrip[]>("/api/custom-trips");
+      const url = isDriver ? "/api/driver/trips-history" : "/api/custom-trips";
+      const data = await customFetch<CustomTrip[]>(url);
       setTrips(data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
     } catch {
       toast({ title: "Error", description: "Could not load your trips.", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
-  }, [toast]);
+  }, [toast, isDriver]);
 
   useEffect(() => { fetchTrips(); }, [fetchTrips]);
 
@@ -208,8 +220,13 @@ export default function TripsPage() {
     <div className="flex-1 bg-muted/20 py-8 min-h-screen">
       <div className="container mx-auto px-4 max-w-3xl">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold">My Trips</h1>
-          <p className="text-muted-foreground mt-2">Track your active and past custom trip bookings.</p>
+          <h1 className="text-3xl font-bold flex items-center gap-2">
+            {isDriver ? <Truck className="h-7 w-7 text-primary" /> : null}
+            My Trips
+          </h1>
+          <p className="text-muted-foreground mt-2">
+            {isDriver ? "All trip requests received for your vehicle." : "Track your active and past custom trip bookings."}
+          </p>
         </div>
 
         {isLoading ? (
@@ -218,21 +235,23 @@ export default function TripsPage() {
           <div className="text-center py-20 bg-card rounded-xl border border-border">
             <Ticket className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-xl font-bold">No trips yet</h3>
-            <p className="text-muted-foreground mt-2 mb-6">Book a custom trip from the map to get started.</p>
-            <Button asChild><Link href="/map">Go to Map</Link></Button>
+            <p className="text-muted-foreground mt-2 mb-6">
+              {isDriver ? "Trip requests will appear here once passengers book your vehicle." : "Book a custom trip from the map to get started."}
+            </p>
+            {!isDriver && <Button asChild><Link href="/map">Go to Map</Link></Button>}
           </div>
         ) : (
           <div className="space-y-8">
             {activeTrips.length > 0 && (
               <section>
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">Active</h2>
-                <div className="grid gap-4">{activeTrips.map((t) => <TripCard key={t.id} trip={t} onRated={handleRated} />)}</div>
+                <div className="grid gap-4">{activeTrips.map((t) => <TripCard key={t.id} trip={t} isDriver={isDriver} onRated={handleRated} />)}</div>
               </section>
             )}
             {pastTrips.length > 0 && (
               <section>
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-3">Past Trips</h2>
-                <div className="grid gap-4">{pastTrips.map((t) => <TripCard key={t.id} trip={t} onRated={handleRated} />)}</div>
+                <div className="grid gap-4">{pastTrips.map((t) => <TripCard key={t.id} trip={t} isDriver={isDriver} onRated={handleRated} />)}</div>
               </section>
             )}
           </div>

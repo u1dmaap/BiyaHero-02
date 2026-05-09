@@ -61,7 +61,7 @@ function mkPin(color: string, size = 32, square = false) {
 function createDriverIcon() { return new L.DivIcon({ className: "", html: `<div style="width:20px;height:20px;border-radius:50%;background:#2563EB;border:3px solid white;box-shadow:0 0 0 4px rgba(37,99,235,0.3),0 4px 12px rgba(0,0,0,0.3);"></div>`, iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -14] }); }
 function createPickupPendingIcon() { return new L.DivIcon({ className: "", html: mkPin("#F59E0B", 28), iconSize: [28, 35], iconAnchor: [14, 35], popupAnchor: [0, -37] }); }
 function createPickupConfirmedIcon() { return new L.DivIcon({ className: "", html: mkPin("#16A34A", 32), iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -42] }); }
-function createDropoffIcon() { return new L.DivIcon({ className: "", html: mkPin("#EF4444", 28, true), iconSize: [28, 35], iconAnchor: [14, 35], popupAnchor: [0, -37] }); }
+function createDropoffIcon() { return new L.DivIcon({ className: "", html: mkPin("#EF4444", 28, false), iconSize: [28, 35], iconAnchor: [14, 35], popupAnchor: [0, -37] }); }
 
 function InvalidateSize() {
   const map = useMap();

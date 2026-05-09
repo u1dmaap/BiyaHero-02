@@ -1,7 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Menu, X, LogOut, Navigation, Truck } from "lucide-react";
+import { Menu, X, LogOut, Navigation, Truck, History } from "lucide-react";
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 
@@ -18,8 +18,8 @@ export function Navbar() {
             <Navigation className="h-6 w-6 fill-primary text-primary" />
             PasaHero Go
           </Link>
-          {isDriver && (
-            <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
+          <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
+            {isDriver && (
               <Link
                 href="/driver"
                 className={`transition-colors hover:text-primary flex items-center gap-1.5 ${location === "/driver" ? "text-primary" : "text-muted-foreground"}`}
@@ -27,14 +27,23 @@ export function Navbar() {
                 <Truck className="h-4 w-4" />
                 Dashboard
               </Link>
-            </nav>
-          )}
+            )}
+            {isAuthenticated && (
+              <Link
+                href="/trips"
+                className={`transition-colors hover:text-primary flex items-center gap-1.5 ${location === "/trips" ? "text-primary" : "text-muted-foreground"}`}
+              >
+                <History className="h-4 w-4" />
+                My Trips
+              </Link>
+            )}
+          </nav>
         </div>
 
         <div className="hidden md:flex items-center gap-3">
           {isAuthenticated && user ? (
             <>
-              <span className="text-sm text-muted-foreground hidden lg:inline">{user.name}</span>
+              <span className="text-sm text-muted-foreground">{user.name}</span>
               {isDriver && <Badge variant="secondary" className="text-[10px]">Driver</Badge>}
               <Button
                 variant="ghost"
@@ -74,6 +83,11 @@ export function Navbar() {
             {isDriver && (
               <Link href="/driver" className="flex items-center gap-2 text-sm font-medium text-muted-foreground" onClick={() => setIsMobileMenuOpen(false)}>
                 <Truck className="h-4 w-4" /> Dashboard
+              </Link>
+            )}
+            {isAuthenticated && (
+              <Link href="/trips" className="flex items-center gap-2 text-sm font-medium text-muted-foreground" onClick={() => setIsMobileMenuOpen(false)}>
+                <History className="h-4 w-4" /> My Trips
               </Link>
             )}
             {isAuthenticated ? (

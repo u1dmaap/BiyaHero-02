@@ -297,6 +297,17 @@ public class DriverController {
         return ResponseEntity.ok(trips);
     }
 
+    @GetMapping("/driver/trips-history")
+    public ResponseEntity<Object> tripsHistory(HttpServletRequest request) {
+        Object[] ctxOut = new Object[1];
+        ResponseEntity<Object> err = getDriverCtx(request, ctxOut);
+        if (err != null) return err;
+        DriverCtx ctx = (DriverCtx) ctxOut[0];
+
+        List<CustomTrip> trips = customTripRepo.findByVehicleId(ctx.vehicle().getId());
+        return ResponseEntity.ok(trips);
+    }
+
     @PutMapping("/driver/custom-requests/{id}/complete")
     public ResponseEntity<Object> completeCustomRequest(HttpServletRequest request, @PathVariable int id) {
         Object[] ctxOut = new Object[1];

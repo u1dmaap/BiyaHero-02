@@ -3,7 +3,8 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import { useGetMapVehicles, VehicleType, customFetch } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, SlidersHorizontal, X, LocateFixed, RefreshCw, CheckCircle2, Clock, AlertCircle, MapPin, Navigation, Flag } from "lucide-react";
+import { Users, SlidersHorizontal, X, LocateFixed, RefreshCw, CheckCircle2, Clock, AlertCircle, MapPin, Navigation, Flag, History } from "lucide-react";
+import { Link } from "wouter";
 import { Badge } from "@/components/ui/badge";
 import L from "leaflet";
 import { useAuth } from "@/hooks/use-auth";
@@ -82,8 +83,7 @@ function createConfirmedPickupIcon() {
   return new L.DivIcon({ className: "", html: pin("#16A34A", 32), iconSize: [32, 40], iconAnchor: [16, 40], popupAnchor: [0, -42] });
 }
 function createDropoffIcon() {
-  const html = `<div style="width:20px;height:20px;background:#EF4444;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);transform:rotate(45deg);border-radius:3px;"></div>`;
-  return new L.DivIcon({ className: "", html, iconSize: [20, 20], iconAnchor: [10, 10], popupAnchor: [0, -14] });
+  return new L.DivIcon({ className: "", html: pin("#EF4444", 28), iconSize: [28, 35], iconAnchor: [14, 35], popupAnchor: [0, -37] });
 }
 
 // ─── Map helpers ───────────────────────────────────────────────────────────────
@@ -324,6 +324,21 @@ function DriverMapView() {
 
 // ─── Commuter map view ─────────────────────────────────────────────────────────
 
+interface ActiveTrip {
+  id: number;
+  status: string;
+  pickupLabel: string;
+  dropoffLabel: string;
+  passengerName: string;
+  requestedTime: string;
+  vehicleId: number;
+}
+
+const TRIP_STATUS_LABEL: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
+  pending:   { label: "Awaiting Driver Approval", color: "text-amber-700", bg: "bg-amber-50 border-amber-200",  icon: <Clock className="h-4 w-4 text-amber-500" /> },
+  confirmed: { label: "Driver is On the Way!",    color: "text-green-700", bg: "bg-green-50 border-green-200",  icon: <CheckCircle2 className="h-4 w-4 text-green-500" /> },
+};
+
 function CommuterMapView() {
   const [activeTypes, setActiveTypes] = useState<Set<VehicleType>>(new Set(Object.values(VehicleType)));
   const [panelOpen, setPanelOpen] = useState(true);
@@ -331,8 +346,16 @@ function CommuterMapView() {
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null);
   const [isRefreshSpinning, setIsRefreshSpinning] = useState(false);
   const [bookingVehicle, setBookingVehicle] = useState<VehicleForBooking | null>(null);
+  const [activeTrip, setActiveTrip] = useState<ActiveTrip | null>(null);
 
   const { data: vehicles, isLoading, refetch } = useGetMapVehicles({ query: { queryKey: ["map-vehicles"], refetchInterval: 30000 } } as Parameters<typeof useGetMapVehicles>[0]);
+
+  useEffect(() => {
+    customFetch<ActiveTrip[]>("/api/custom-trips").then((trips) => {
+      const active = trips.find((t) => t.status === "pending" || t.status === "confirmed") ?? null;
+      setActiveTrip(active);
+    }).catch(() => {});
+  }, []);
 
   const filteredVehicles = useMemo(() => {
     if (!vehicles) return [];
@@ -399,13 +422,19 @@ function CommuterMapView() {
                       </div>
                     )}
                   </div>
-                  <button
-                    onClick={() => setBookingVehicle({ id: vehicle.id, type: vehicle.type, plateNumber: vehicle.plateNumber, operator: vehicle.operator, routeName: vehicle.routeName, routeOrigin: vehicle.routeOrigin, routeDestination: vehicle.routeDestination, color })}
-                    className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg px-3 py-2 transition-colors"
-                    style={{ backgroundColor: color }}
-                  >
-                    <MapPin className="h-3.5 w-3.5" /> Book this vehicle
-                  </button>
+                  {activeTrip ? (
+                    <div className="mt-3 w-full text-center text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-medium">
+                      You already have an active booking
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setBookingVehicle({ id: vehicle.id, type: vehicle.type, plateNumber: vehicle.plateNumber, operator: vehicle.operator, routeName: vehicle.routeName, routeOrigin: vehicle.routeOrigin, routeDestination: vehicle.routeDestination, color })}
+                      className="mt-3 w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-white rounded-lg px-3 py-2 transition-colors"
+                      style={{ backgroundColor: color }}
+                    >
+                      <MapPin className="h-3.5 w-3.5" /> Book this vehicle
+                    </button>
+                  )}
                 </div>
               </Popup>
             </Marker>
@@ -427,23 +456,59 @@ function CommuterMapView() {
 
       <div className={`absolute top-4 left-4 z-[1000] w-72 bg-white/95 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-100 overflow-hidden transition-all duration-300 ease-in-out ${panelOpen ? "opacity-100 translate-x-0 pointer-events-auto" : "opacity-0 -translate-x-4 pointer-events-none"}`}>
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
-          <div><h2 className="font-bold text-sm text-gray-900">Live Map</h2><p className="text-[11px] text-gray-500 mt-0.5">Batangas Province public transport</p></div>
+          <div>
+            <h2 className="font-bold text-sm text-gray-900">Live Map</h2>
+            <p className="text-[11px] text-gray-500 mt-0.5">Batangas Province public transport</p>
+          </div>
           <button onClick={() => setPanelOpen(false)} className="text-gray-400 hover:text-gray-700 transition-colors"><X className="h-4 w-4" /></button>
         </div>
-        <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
-          <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-3">Filter by type</p>
-          {Object.values(VehicleType).filter((t) => !HIDDEN_TYPES.has(t)).map((type) => (
-            <label key={type} htmlFor={`type-${type}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
-              <Checkbox id={`type-${type}`} checked={activeTypes.has(type as VehicleType)} onCheckedChange={() => toggleType(type as VehicleType)} />
-              <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: vehicleColors[type] }} />
-              <span className="text-sm font-medium capitalize flex-1 text-gray-700">{type.replace("_", " ")}</span>
-              <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">{vehicles?.filter((v) => v.type === type).length ?? 0}</span>
-            </label>
-          ))}
-        </div>
-        <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/80">
-          <div className="flex justify-between items-center text-sm"><span className="text-gray-500 text-xs">Showing</span><span className="font-bold text-primary">{filteredVehicles.length} vehicles</span></div>
-        </div>
+
+        {activeTrip ? (
+          (() => {
+            const cfg = TRIP_STATUS_LABEL[activeTrip.status] ?? { label: activeTrip.status, color: "text-gray-700", bg: "bg-gray-50 border-gray-200", icon: <Clock className="h-4 w-4 text-gray-400" /> };
+            return (
+              <div className="p-4 space-y-4">
+                <div className={`rounded-xl border p-3 ${cfg.bg}`}>
+                  <div className={`flex items-center gap-2 font-semibold text-sm mb-3 ${cfg.color}`}>
+                    {cfg.icon}{cfg.label}
+                  </div>
+                  <div className="space-y-2 text-xs text-gray-600">
+                    <div className="flex items-start gap-2">
+                      <LocateFixed className="h-3.5 w-3.5 text-green-600 mt-0.5 shrink-0" />
+                      <div><span className="text-gray-400 block">Pickup</span><span className="font-medium">{activeTrip.pickupLabel}</span></div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <MapPin className="h-3.5 w-3.5 text-red-500 mt-0.5 shrink-0" />
+                      <div><span className="text-gray-400 block">Dropoff</span><span className="font-medium">{activeTrip.dropoffLabel}</span></div>
+                    </div>
+                  </div>
+                </div>
+                <Link href="/trips">
+                  <Button size="sm" variant="outline" className="w-full flex items-center gap-1.5 text-xs">
+                    <History className="h-3.5 w-3.5" />View My Trips
+                  </Button>
+                </Link>
+              </div>
+            );
+          })()
+        ) : (
+          <>
+            <div className="p-4 space-y-2 max-h-[60vh] overflow-y-auto">
+              <p className="text-[11px] font-semibold text-gray-500 uppercase tracking-wider mb-3">Filter by type</p>
+              {Object.values(VehicleType).filter((t) => !HIDDEN_TYPES.has(t)).map((type) => (
+                <label key={type} htmlFor={`type-${type}`} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 cursor-pointer transition-colors">
+                  <Checkbox id={`type-${type}`} checked={activeTypes.has(type as VehicleType)} onCheckedChange={() => toggleType(type as VehicleType)} />
+                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: vehicleColors[type] }} />
+                  <span className="text-sm font-medium capitalize flex-1 text-gray-700">{type.replace("_", " ")}</span>
+                  <span className="text-[11px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-md">{vehicles?.filter((v) => v.type === type).length ?? 0}</span>
+                </label>
+              ))}
+            </div>
+            <div className="px-4 py-3 border-t border-gray-100 bg-gray-50/80">
+              <div className="flex justify-between items-center text-sm"><span className="text-gray-500 text-xs">Showing</span><span className="font-bold text-primary">{filteredVehicles.length} vehicles</span></div>
+            </div>
+          </>
+        )}
       </div>
 
       <VehicleBookingSheet vehicle={bookingVehicle} onClose={() => setBookingVehicle(null)} />

@@ -60,6 +60,10 @@ public class CustomTripRepository {
         return jdbc.query("SELECT * FROM custom_trips WHERE vehicle_id = ? AND status = ? ORDER BY created_at DESC", mapper, vehicleId, status);
     }
 
+    public List<CustomTrip> findByVehicleId(int vehicleId) {
+        return jdbc.query("SELECT * FROM custom_trips WHERE vehicle_id = ? ORDER BY created_at DESC", mapper, vehicleId);
+    }
+
     public CustomTrip insert(int userId, int vehicleId, double pickupLat, double pickupLng, String pickupLabel,
                               double dropoffLat, double dropoffLng, String dropoffLabel,
                               String requestedTime, String passengerName, String passengerPhone,
